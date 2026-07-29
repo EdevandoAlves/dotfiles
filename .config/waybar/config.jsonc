@@ -9,6 +9,7 @@
     // Choose the order of the modules
     "modules-left": [
         "hyprland/workspaces",
+        "custom/separator",
         "custom/media"
     ],
     "modules-center": [
@@ -45,6 +46,9 @@
       "format": "󰄬 {}",
       "exec": "hyprctl clients | grep 'special' | wc -l",
       "interval": 2,
+    },
+    "custom/separator": {
+    "format": "|"
     },
     "hyprland/window": {
       "format": "{initialClass} - {title}",
