@@ -1,0 +1,102 @@
+// -*- mode: jsonc -*-
+{
+    "height": 24, // Waybar height (to be removed for auto height)
+    "spacing": 6, // Gaps between modules (4px)
+    "margin-top": 5,
+    "margin-botton": 0,
+    "margin-right": 10,
+    "margin-left": 10,
+    // Choose the order of the modules
+    "modules-left": [
+        "hyprland/workspaces",
+        "custom/media"
+    ],
+    "modules-center": [
+        "hyprland/window",
+        "clock",
+        "custom/scratchpad"
+    ],
+    "modules-right": [
+        "pulseaudio",
+        "hyprland/language",
+        "tray",
+        "custom/power"
+    ],
+    // Modules configuration
+    "hyprland/workspaces": {
+        "disable-scroll": true,
+        "all-outputs": true,
+        "warp-on-scroll": false,
+        "format": "{icon}",
+        "format-icons": {
+            "1": "",
+            "2": "",
+            "3": "",
+            "4": "",
+            "urgent": "",
+            "focused": "",
+            "default": ""
+        },
+      "persistent-workspaces": {
+        "*": [1,2,3,4]
+      }
+    },
+    "custom/scratchpad": {
+      "format": "󰄬 {}",
+      "exec": "hyprctl clients | grep 'special' | wc -l",
+      "interval": 2,
+    },
+    "hyprland/window": {
+      "format": "{initialClass} - {title}",
+      "max-length": 30,
+        "rewrite": {
+          "^brave-browser .*": "Brave",
+          "^vesktop .*": "Discord",
+          "^com.mitchellh.ghostty .*": "Terminal"
+        },
+      "separate-outputs": true,
+      "tooltip-format": "{initialClass}\n{title}"
+    },
+    "hyprland/language": {
+	    "format-en": "US",
+	    "format-pt": "BR",
+      "tooltip": true,
+      "tooltip-format": "{long}"
+    },
+    "tray": {
+        "spacing": 10,
+    },
+    "clock": {
+        "timezone": "America/Sao_Paulo",
+        "format": "{:%R - %d %B}",
+        "tooltip-format": "<tt><small>{calendar}</small></tt>",
+	      "format-alt": "{:%A, %d %B, %Y}",
+    },
+    "pulseaudio": {
+        "format": "{volume}% {icon}  {format_source}",
+        "format-muted": "󰝟  {format_source}",
+        "format-source": "{volume}% ",
+        "format-source-muted": "",
+        "format-icons": {
+            "default": ["", "", ""]
+        },
+        "on-click": "pavucontrol"
+    },
+    "custom/media": {
+        "return-type": "json",
+        "max-length": 30,
+        "exec": "$HOME/.config/waybar/mediaplayer.py 2> /dev/null"
+    },
+    "custom/power": {
+        "format" : "⏻ ",
+		"tooltip": false,
+		"menu": "on-click",
+		"menu-file": "$HOME/.config/waybar/power_menu.xml", // Menu file in resources folder
+		"menu-actions": {
+			"shutdown": "shutdown",
+			"reboot": "reboot",
+			"suspend": "systemctl suspend",
+			"hibernate": "systemctl hibernate"
+		}
+    }
+}
