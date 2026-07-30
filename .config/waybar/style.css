@@ -87,12 +87,12 @@ button:hover {
     margin-right: 0;
 }
 
-.modules-center {
+/*.modules-center {
     border: 1px solid transparent;
     border-radius: 8px;
     background: linear-gradient(#0d0d0d, #242424) padding-box, linear-gradient(5deg ,#f2e6d8, #0d0d0d, #0d0d0d) border-box;
     padding: 0 10px
-}
+}*/
 
 #tray {
     background-color: #242424;

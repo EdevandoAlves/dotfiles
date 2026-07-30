@@ -52,6 +52,7 @@ hl.on("hyprland.start", function()
   hl.exec_cmd("vicinae server")
   hl.exec_cmd("waybar")
   hl.exec_cmd("hyprpaper")
+  hl.exec_cmd("swaync")
 end)
 
 -------------------------------
@@ -261,9 +262,9 @@ hl.bind(mainMod .. " + V", hl.dsp.layout("togglesplit")) -- dwindle only
 hl.bind(mainMod .. " + CTRL + L", hl.dsp.exec_cmd("hyprlock"))
 hl.bind(mainMod .. " + CTRL + W", hl.dsp.exec_cmd("$HOME/.config/hypr/scripts/c-wallpaper.sh"))
 hl.bind("CTRL + ALT + DELETE", hl.dsp.exec_cmd("killall-windows"))
-hl.bind(mainMod .. " + M",
-  hl.dsp.exec_cmd("command -v hyprshutdown >/dev/null 2>&1 && hyprshutdown || hyprctl dispatch 'hl.dsp.exit()'"),
-  { locked = true })
+-- hl.bind(mainMod .. " + M",
+--   hl.dsp.exec_cmd("command -v hyprshutdown >/dev/null 2>&1 && hyprshutdown || hyprctl dispatch 'hl.dsp.exit()'"))
+
 
 -- Move focus with mainMod + arrow keys
 hl.bind(mainMod .. " + H", hl.dsp.focus({ direction = "left" }))
@@ -285,11 +286,14 @@ end
 
 -- Example special workspace (scratchpad)
 hl.bind(mainMod .. " + S", hl.dsp.workspace.toggle_special("magic"))
-hl.bind(mainMod .. " + SHIFT + S", hl.dsp.window.move({ workspace = "special:magic" }))
+hl.bind(mainMod .. " + CTRL + S", hl.dsp.window.move({ workspace = "special:magic" }))
+hl.bind(mainMod .. " + SHIFT + S", hl.dsp.exec_cmd("$HOME/.config/hypr/scripts/ss-menu.sh"))
 
 hl.bind(mainMod .. " + O", hl.dsp.exec_cmd("flatpak run md.obsidian.Obsidian"))
-hl.bind(mainMod .. " + Y", hl.dsp.exec_cmd("youtube-music"))
-hl.bind(mainMod .. " + W", hl.dsp.exec_cmd("flatpak run com.rtosta.zapzap"))
+hl.bind(mainMod .. " + M", hl.dsp.exec_cmd("$HOME/.config/hypr/scripts/t-app.sh youtube-music youtube-music"))
+hl.bind(mainMod .. " + D", hl.dsp.exec_cmd("$HOME/.config/hypr/scripts/t-app.sh vesktop flatpak run dev.vencord.Vesktop"))
+hl.bind(mainMod .. " + W", hl.dsp.exec_cmd("$HOME/.config/hypr/scripts/t-app.sh zapzap flatpak run com.rtosta.zapzap"))
+hl.bind(mainMod .. " + N", hl.dsp.exec_cmd("swaync-client -t"))
 
 -- Laptop multimedia keys for volume and LCD brightness
 hl.bind("XF86AudioRaiseVolume", hl.dsp.exec_cmd("wpctl set-volume -l 1 @DEFAULT_AUDIO_SINK@ 5%+"),
@@ -341,6 +345,17 @@ hl.window_rule({
 
   no_focus = true,
 })
+
+-- hl.window_rule({
+--   name = "obsidian",
+--   match = {
+--     class      = "^$obsidian",
+--     xwayland   = true,
+--     float      = true,
+--     fullscreen = true,
+--   }
+--
+-- })
 
 -- Layer rules also return a handle.
 -- local overlayLayerRule = hl.layer_rule({
