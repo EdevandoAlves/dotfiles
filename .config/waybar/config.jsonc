@@ -56,7 +56,8 @@
         "rewrite": {
           "^brave-browser .*": "Brave",
           "^vesktop .*": "Discord",
-          "^com.mitchellh.ghostty .*": "Terminal"
+          "^com.mitchellh.ghostty .*": "Terminal",
+          "^youtube-music .*": "Youtube Music"
         },
       "separate-outputs": true,
       "tooltip-format": "{initialClass}\n{title}"

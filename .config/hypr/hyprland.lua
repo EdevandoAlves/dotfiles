@@ -51,6 +51,7 @@ local browser     = "brave-browser --password-store=basic"
 hl.on("hyprland.start", function()
   hl.exec_cmd("vicinae server")
   hl.exec_cmd("waybar")
+  hl.exec_cmd("hyprpaper")
 end)
 
 -------------------------------
@@ -109,8 +110,8 @@ hl.config({
   },
 
   decoration = {
-    rounding           = 8,
-    rounding_power     = 2,
+    rounding           = 6,
+    rounding_power     = 1,
 
     -- Change transparency of focused and unfocused windows
     active_opacity     = 0.9,
@@ -257,10 +258,12 @@ hl.bind(mainMod .. " + SUPER_L", hl.dsp.exec_cmd(menu), { release = true })
 hl.bind(mainMod .. " + P", hl.dsp.window.pseudo())
 hl.bind(mainMod .. " + V", hl.dsp.layout("togglesplit")) -- dwindle only
 
--- hl.bind(mainMod .. " + CTRL + L", hl.dsp.exec_cmd(hyprlock))
+hl.bind(mainMod .. " + CTRL + L", hl.dsp.exec_cmd("hyprlock"))
+hl.bind(mainMod .. " + CTRL + W", hl.dsp.exec_cmd("$HOME/.config/hypr/scripts/c-wallpaper.sh"))
 hl.bind("CTRL + ALT + DELETE", hl.dsp.exec_cmd("killall-windows"))
 hl.bind(mainMod .. " + M",
-  hl.dsp.exec_cmd("command -v hyprshutdown >/dev/null 2>&1 && hyprshutdown || hyprctl dispatch 'hl.dsp.exit()'"))
+  hl.dsp.exec_cmd("command -v hyprshutdown >/dev/null 2>&1 && hyprshutdown || hyprctl dispatch 'hl.dsp.exit()'"),
+  { locked = true })
 
 -- Move focus with mainMod + arrow keys
 hl.bind(mainMod .. " + H", hl.dsp.focus({ direction = "left" }))
@@ -283,6 +286,10 @@ end
 -- Example special workspace (scratchpad)
 hl.bind(mainMod .. " + S", hl.dsp.workspace.toggle_special("magic"))
 hl.bind(mainMod .. " + SHIFT + S", hl.dsp.window.move({ workspace = "special:magic" }))
+
+hl.bind(mainMod .. " + O", hl.dsp.exec_cmd("flatpak run md.obsidian.Obsidian"))
+hl.bind(mainMod .. " + Y", hl.dsp.exec_cmd("youtube-music"))
+hl.bind(mainMod .. " + W", hl.dsp.exec_cmd("flatpak run com.rtosta.zapzap"))
 
 -- Laptop multimedia keys for volume and LCD brightness
 hl.bind("XF86AudioRaiseVolume", hl.dsp.exec_cmd("wpctl set-volume -l 1 @DEFAULT_AUDIO_SINK@ 5%+"),
