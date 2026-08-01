@@ -53,6 +53,7 @@ hl.on("hyprland.start", function()
   hl.exec_cmd("waybar")
   hl.exec_cmd("hyprpaper")
   hl.exec_cmd("swaync")
+  hl.exec_cmd("9router -n -t")
 end)
 
 -------------------------------
@@ -294,6 +295,7 @@ hl.bind(mainMod .. " + M", hl.dsp.exec_cmd("$HOME/.config/hypr/scripts/t-app.sh 
 hl.bind(mainMod .. " + D", hl.dsp.exec_cmd("$HOME/.config/hypr/scripts/t-app.sh vesktop flatpak run dev.vencord.Vesktop"))
 hl.bind(mainMod .. " + W", hl.dsp.exec_cmd("$HOME/.config/hypr/scripts/t-app.sh zapzap flatpak run com.rtosta.zapzap"))
 hl.bind(mainMod .. " + N", hl.dsp.exec_cmd("swaync-client -t"))
+hl.bind(mainMod .. " + C", hl.dsp.exec_cmd("codex-desktop"))
 
 -- Laptop multimedia keys for volume and LCD brightness
 hl.bind("XF86AudioRaiseVolume", hl.dsp.exec_cmd("wpctl set-volume -l 1 @DEFAULT_AUDIO_SINK@ 5%+"),
@@ -346,16 +348,59 @@ hl.window_rule({
   no_focus = true,
 })
 
--- hl.window_rule({
---   name = "obsidian",
---   match = {
---     class      = "^$obsidian",
---     xwayland   = true,
---     float      = true,
---     fullscreen = true,
---   }
---
--- })
+hl.window_rule({
+  match = {
+    class = "com.mitchellh.ghostty",
+  },
+
+  workspace = 1,
+  no_initial_focus = true
+})
+
+hl.window_rule({
+  match = {
+    class = "brave-browser",
+  },
+
+  workspace = 2,
+  no_initial_focus = true
+})
+
+hl.window_rule({
+  match = {
+    class = "vesktop",
+  },
+
+  workspace = 3,
+  no_initial_focus = true
+})
+
+hl.window_rule({
+  match = {
+    class = "com.rtosta.zapzap",
+  },
+
+  workspace = 3,
+  no_initial_focus = true
+})
+
+hl.window_rule({
+  match = {
+    class = "obsidian",
+  },
+
+  workspace = 3,
+  no_initial_focus = true
+})
+
+hl.window_rule({
+  match = {
+    class = "com.github.th-ch.youtube-music"
+  },
+
+  workspace = 4,
+  no_initial_focus = true
+})
 
 -- Layer rules also return a handle.
 -- local overlayLayerRule = hl.layer_rule({
