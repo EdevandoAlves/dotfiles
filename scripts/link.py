@@ -71,15 +71,16 @@ def link(src: Path, dst: Path, rel: str) -> None:
     print(f"  link   {dst} -> {os.path.relpath(src, dst.parent)}")
 
 
-def link_tree(source: Path, label: str) -> None:
-    """Linka os arquivos de uma árvore, pulando os WHOLE."""
+def link_tree(source: Path, label: str, skip: set[str] | None = None) -> None:
+    """Linka os arquivos de uma árvore, pulando os WHOLE e o overlay do host."""
     if not source.exists():
         return
+    skip = skip or set()
     for path in sorted(source.rglob("*")):
         if not path.is_file() or path.name == ".gitkeep":
             continue
         rel = str(path.relative_to(source))
-        if under_whole(rel):
+        if under_whole(rel) or rel in skip:
             continue
         print(f"[{label}] {rel}")
         link(path, HOME / rel, rel)
@@ -102,11 +103,19 @@ def main() -> int:
         print(f"[whole] {rel}")
         link(src, HOME / rel, rel)
 
-    # 2. O resto do home, arquivo a arquivo.
-    link_tree(ROOT / "home", "home")
-
-    # 3. Overlay do host atual (monitores, autostart, etc.).
+    # 2. Overlay do host atual (monitores, autostart, etc.).
     host_root = ROOT / "hosts" / HOST
+    host_files: set[str] = set()
+    if host_root.exists():
+        host_files = {str(p.relative_to(host_root)) for p in host_root.rglob("*") if p.is_file()}
+    else:
+        print(f"[host] hosts/{HOST} não existe; usando o home comum")
+
+    # 3. O resto do home, arquivo a arquivo. O que o host sobrepõe não é
+    # linkado duas vezes.
+    link_tree(ROOT / "home", "home", skip=host_files)
+
+    # 4. Overlay do host.
     if host_root.exists():
         link_tree(host_root, f"host:{HOST}")
     else:
