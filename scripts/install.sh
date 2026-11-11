@@ -52,6 +52,8 @@ if omarchy theme list 2>/dev/null | grep -qi 'aether'; then
 fi
 
 systemctl --user daemon-reload 2>/dev/null || true
+systemctl --user enable --now xwayland-us-intl.service 2>/dev/null || \
+  echo "Aviso: xwayland-us-intl.service não pôde ser ativado agora."
 
 if [[ -d /opt/superwhisper ]]; then
   echo "Superwhisper encontrado."

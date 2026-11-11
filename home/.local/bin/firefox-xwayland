@@ -6,10 +6,5 @@
 # Remova este wrapper e volte MOZ_ENABLE_WAYLAND=1 quando o Firefox corrigir.
 export MOZ_ENABLE_WAYLAND=0
 export GTK_IM_MODULE=simple
-
-for socket in /tmp/.X11-unix/X*; do
-  [ -e "$socket" ] || continue
-  DISPLAY=":${socket##*X}" setxkbmap -layout us -variant intl >/dev/null 2>&1 || true
-done
-
+"$HOME/.local/bin/set-xwayland-layout" >/dev/null 2>&1 || true
 exec /usr/lib/firefox/firefox "$@"

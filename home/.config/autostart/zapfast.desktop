@@ -1,0 +1,7 @@
+[Desktop Entry]
+Type=Application
+Name=ZapFast
+Exec=zapfast-x11 --start-hidden
+Icon=zapfast
+Terminal=false
+X-GNOME-Autostart-enabled=true

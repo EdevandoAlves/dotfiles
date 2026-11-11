@@ -87,21 +87,33 @@ backup. O diretório de backup não é versionado.
   itens específicos de hardware (`amd-ucode`, etc.) antes de instalar em outro
   PC.
 
-## Firefox e acentos (dead keys)
+## Acentos e dead keys (todos os apps)
 
-O Firefox em Wayland nativo tem um bug conhecido com `us-intl` + Hyprland
-(Bugzilla 2004150): os dead keys saem errados. O repo contorna isso com:
+O problema não é só do Firefox: apps que usam o text-input do Wayland e o
+layout `us-intl` (Firefox, Chromium/Electron, ZapFast/winit) erram a composição
+dos dead keys. GTK funciona via `GTK_IM_MODULE=simple`. A estratégia do repo é:
 
-- `home/.local/bin/firefox-xwayland` — força `MOZ_ENABLE_WAYLAND=0`,
-  `GTK_IM_MODULE=simple` e aplica `us-intl` no XWayland antes de abrir;
-- `home/.local/share/applications/firefox.desktop` — aponta o launcher para
-  esse wrapper;
-- `home/.config/environment.d/omarchy-firefox-wayland.conf` — mantém
-  `MOZ_ENABLE_WAYLAND=0` para os próximos logins.
+- **XWayland em `us-intl` para todos:** `set-xwayland-layout` +
+  `xwayland-us-intl.service` (systemd user) colocam todo display XWayland em
+  `us-intl` no login.
+- **Firefox:** `home/.local/bin/firefox-xwayland` força
+  `MOZ_ENABLE_WAYLAND=0` + `GTK_IM_MODULE=simple`;
+  `home/.local/share/applications/firefox.desktop` aponta para ele;
+  `environment.d/omarchy-firefox-wayland.conf` mantém `MOZ_ENABLE_WAYLAND=0`.
+- **ZapFast (winit/egui):** `home/.local/bin/zapfast-x11` remove
+  `WAYLAND_DISPLAY` (força X11); o desktop entry e o autostart apontam para ele.
+- **Chromium:** `chromium-flags.conf` usa `--ozone-platform=x11`; o wrapper
+  `home/.local/bin/chromium` garante o `us-intl` antes de abrir.
+- **Electron (Obsidian, Discord, etc.):**
+  `environment.d/30-electron-x11.conf` define
+  `ELECTRON_OZONE_PLATFORM_HINT=x11`; vale a partir do próximo login.
+- **Qt/nativo Wayland:** não é forçado, para não quebrar o shell (Quickshell).
+  Se um app Qt específico falhar, crie um wrapper só para ele com
+  `QT_QPA_PLATFORM=xcb`.
 
-Feche **todas** as janelas do Firefox e abra de novo pelo launcher. Quando o
-Firefox corrigir o backend Wayland, remova o wrapper e volte
-`MOZ_ENABLE_WAYLAND=1`.
+Para aplicar: reinicie Firefox, ZapFast e Chromium; para o Electron, faça
+logout/login uma vez. Quando os apps corrigirem o Wayland, remova o wrapper
+correspondente e volte ao backend nativo.
 
 ## Atualizar
 

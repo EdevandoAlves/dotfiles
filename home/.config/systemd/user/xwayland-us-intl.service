@@ -1,0 +1,11 @@
+[Unit]
+Description=Set XWayland keyboard layout to us-intl
+After=graphical-session.target
+PartOf=graphical-session.target
+
+[Service]
+Type=oneshot
+ExecStart=%h/.local/bin/set-xwayland-layout
+
+[Install]
+WantedBy=graphical-session.target

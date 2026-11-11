@@ -1,0 +1,14 @@
+#!/bin/sh
+# ZapFast (winit/egui) erra dead keys no Wayland nativo. Força o backend X11
+# e garante que o XWayland esteja em us-intl.
+if [ -z "${DISPLAY:-}" ]; then
+  for socket in /tmp/.X11-unix/X*; do
+    [ -e "$socket" ] || continue
+    DISPLAY=":${socket##*X}"
+    export DISPLAY
+    break
+  done
+fi
+unset WAYLAND_DISPLAY
+"$HOME/.local/bin/set-xwayland-layout" >/dev/null 2>&1 || true
+exec /usr/bin/zapfast "$@"

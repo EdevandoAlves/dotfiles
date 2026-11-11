@@ -1,0 +1,5 @@
+#!/bin/sh
+# Chromium/Keep the XWayland keymap on us-intl before launching Chromium.
+# The X11 backend itself comes from --ozone-platform=x11 in chromium-flags.conf.
+"$HOME/.local/bin/set-xwayland-layout" >/dev/null 2>&1 || true
+exec /usr/bin/chromium "$@"

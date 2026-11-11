@@ -1,0 +1,13 @@
+#!/bin/sh
+# O XWayland não herda o variant intl do Hyprland. Coloca todos os displays
+# XWayland em us-intl, que é o layout usado no Wayland e pelos wrappers.
+for _ in 1 2 3 4 5; do
+  found=0
+  for socket in /tmp/.X11-unix/X*; do
+    [ -e "$socket" ] || continue
+    DISPLAY=":${socket##*X}" setxkbmap -layout us -variant intl >/dev/null 2>&1 && found=1
+  done
+  [ "$found" = 1 ] && exit 0
+  sleep 1
+done
+exit 0
