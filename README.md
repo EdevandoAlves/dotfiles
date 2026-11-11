@@ -104,12 +104,17 @@ dos dead keys. GTK funciona via `GTK_IM_MODULE=simple`. A estratégia do repo é
   `WAYLAND_DISPLAY` (força X11); o desktop entry e o autostart apontam para ele.
 - **Chromium:** `chromium-flags.conf` usa `--ozone-platform=x11`; o wrapper
   `home/.local/bin/chromium` garante o `us-intl` antes de abrir.
-- **Electron (Obsidian, Discord, etc.):**
-  `environment.d/30-electron-x11.conf` define
-  `ELECTRON_OZONE_PLATFORM_HINT=x11`; vale a partir do próximo login.
-- **Qt/nativo Wayland:** não é forçado, para não quebrar o shell (Quickshell).
-  Se um app Qt específico falhar, crie um wrapper só para ele com
-  `QT_QPA_PLATFORM=xcb`.
+- **Electron (Obsidian, Discord, etc.):** `looknfeel.lua` sobrepõe o default
+  do Omarchy com `ELECTRON_OZONE_PLATFORM_HINT=x11`; vale a partir do próximo
+  login. O `environment.d/30-electron-x11.conf` fica como fallback.
+- **Qt puro (Omawrite, NectarLink):** o `QT_QPA_PLATFORM` global não pode ir
+  para `xcb` porque o Quickshell/bar também é Qt. Então esses dois usam
+  wrappers (`omawrite-x11`, `nectarlink-x11`), e o dock/autostart já apontam
+  para eles; você continua abrindo pelo ícone normal.
+- **Por que os `environment.d` não bastavam:** o Omarchy define
+  `MOZ_ENABLE_WAYLAND=1` e `ELECTRON_OZONE_PLATFORM_HINT=wayland` no
+  `default/hypr/envs.lua`, que vence o `environment.d`. O override agora está
+  no `looknfeel.lua`, que carrega depois.
 
 Para aplicar: reinicie Firefox, ZapFast e Chromium; para o Electron, faça
 logout/login uma vez. Quando os apps corrigirem o Wayland, remova o wrapper
