@@ -1,0 +1,15 @@
+#!/bin/sh
+# Firefox Wayland nativo + us-intl + Hyprland tem dead keys quebradas
+# (Bugzilla 2004150). XWayland + GTK_IM_MODULE=simple compõe como o terminal.
+# O XWayland também não herda o variant intl do Hyprland, então garantimos
+# us-intl antes de abrir o Firefox.
+# Remova este wrapper e volte MOZ_ENABLE_WAYLAND=1 quando o Firefox corrigir.
+export MOZ_ENABLE_WAYLAND=0
+export GTK_IM_MODULE=simple
+
+for socket in /tmp/.X11-unix/X*; do
+  [ -e "$socket" ] || continue
+  DISPLAY=":${socket##*X}" setxkbmap -layout us -variant intl >/dev/null 2>&1 || true
+done
+
+exec /usr/lib/firefox/firefox "$@"
