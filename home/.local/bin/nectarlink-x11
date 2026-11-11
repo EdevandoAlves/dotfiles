@@ -1,0 +1,5 @@
+#!/bin/sh
+# NectarLink é Qt6; mesma limitação de dead keys no Wayland nativo.
+export QT_QPA_PLATFORM=xcb
+"$HOME/.local/bin/set-xwayland-layout" >/dev/null 2>&1 || true
+exec "$HOME/.local/share/nectarlink-app/nectarlink-desktop" "$@"

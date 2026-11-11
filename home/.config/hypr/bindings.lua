@@ -55,7 +55,7 @@ o.bind("SUPER + PERIOD", "Screenshot (tela cheia)", "omarchy capture screenshot 
 o.bind("SUPER + semicolon", "Keybindings", "omarchy-menu-keybindings")
 
 -- ZapFast (WhatsApp nativo) em SUPER + SHIFT + G.
-o.rebind("SUPER + SHIFT + G", "WhatsApp (ZapFast)", { launch = "zapfast", focus = "^zapfast$" })
+o.rebind("SUPER + SHIFT + G", "WhatsApp (ZapFast)", { launch = "zapfast-x11", focus = "^zapfast$" })
 
 -- Limusic (YouTube Music nativo) em SUPER + SHIFT + M.
 o.rebind("SUPER + SHIFT + M", "Music (Limusic)", { launch = "limusic-app", focus = "^limusic-app$" })

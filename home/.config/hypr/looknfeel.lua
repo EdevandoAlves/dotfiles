@@ -1,5 +1,11 @@
 -- Change the default Omarchy look'n'feel.
 
+-- Omacale: sobrescreve os defaults do Omarchy (default/hypr/envs.lua) que
+-- forçam Wayland nativo em apps com dead keys quebradas. Este arquivo carrega
+-- depois, então vence.
+hl.env("MOZ_ENABLE_WAYLAND", "0")
+hl.env("ELECTRON_OZONE_PLATFORM_HINT", "x11")
+
 -- Omacale: moldura neutra em vez do verde do tema. A cor vem do
 -- general:col.active_border, que o tema define antes deste arquivo.
 hl.config({

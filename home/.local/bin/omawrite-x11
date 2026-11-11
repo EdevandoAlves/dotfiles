@@ -1,0 +1,6 @@
+#!/bin/sh
+# Omawrite é Qt e o Wayland nativo não compõe os dead keys do us-intl.
+# Força XWayland e garante o us-intl. O Quickshell continua em Wayland.
+export QT_QPA_PLATFORM=xcb
+"$HOME/.local/bin/set-xwayland-layout" >/dev/null 2>&1 || true
+exec /usr/bin/omawrite "$@"
