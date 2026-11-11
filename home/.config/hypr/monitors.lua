@@ -1,0 +1,3 @@
+-- Monitores: por padrão, deixe o Hyprland detectar.
+-- Para a configuração específica de uma máquina, use
+-- hosts/<hostname>/.config/hypr/monitors.lua (o link.py sobrepõe este arquivo).

@@ -1,0 +1,3 @@
+-- Apps de inicialização desta máquina.
+-- Para a configuração específica de uma máquina, use
+-- hosts/<hostname>/.config/hypr/autostart.lua (o link.py sobrepõe este arquivo).
