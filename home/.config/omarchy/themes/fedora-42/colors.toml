@@ -1,0 +1,35 @@
+mode = "dark"
+
+# Adwaita blue 3, the Fedora/GNOME accent
+accent = "#3584e4"
+selection = "#315f8f"
+selection_foreground = "#ffffff"
+muted = "#5e5c64"
+
+# Adwaita dark window, headerbar and card surfaces
+background = "#242424"
+dark_background = "#1e1e1e"
+darker_background = "#1a1a1a"
+lighter_background = "#303030"
+
+foreground = "#ffffff"
+dark_foreground = "#9a9996"
+light_foreground = "#deddda"
+bright_foreground = "#ffffff"
+
+# libadwaita palette
+red = "#e01b24"
+yellow = "#f6d32d"
+orange = "#ff7800"
+green = "#33d17a"
+cyan = "#33c7de"
+blue = "#3584e4"
+magenta = "#c061cb"
+brown = "#986a44"
+
+bright_red = "#f66151"
+bright_yellow = "#f8e45c"
+bright_green = "#57e389"
+bright_cyan = "#5ad4e6"
+bright_blue = "#62a0ea"
+bright_magenta = "#dc8add"

@@ -1,0 +1,40 @@
+# Backups / generated
+*.bak
+*.bak.*
+*.pre-dotfiles
+*.omacale-orig
+**/plugins-backups/
+**/preview.png
+**/preview.jpg
+*.webp
+.dotfiles-backup/
+.cache/
+.local/
+
+# Secrets and app state
+.ssh/
+.gnupg/
+.config/gh/
+.config/Bitwarden/
+.config/Bitwarden CLI/
+.config/heroic/
+.config/Steam/
+.config/BraveSoftware/
+.config/chromium/
+.config/google-chrome/
+.config/google-chrome-beta/
+.config/google-chrome-unstable/
+.config/microsoft-edge/
+.config/microsoft-edge-dev/
+.config/mozilla/
+.config/Hermes/
+.config/exercism/
+.config/limusic/
+.config/cliamp/
+.config/herdr/
+.config/opencode/
+.local/share/
+
+# OS noise
+.DS_Store
+Thumbs.db

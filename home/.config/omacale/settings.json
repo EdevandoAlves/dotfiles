@@ -1,0 +1,426 @@
+{
+    "appearance": {
+        "animScale": 1,
+        "deformScale": 1,
+        "mode": "dark",
+        "omarchySurfaces": true,
+        "palette": "material",
+        "pureBlack": true,
+        "scale": {
+            "font": 1,
+            "padding": 1,
+            "rounding": 1,
+            "source": "omarchy",
+            "spacing": 1,
+            "ui": 1
+        },
+        "seed": "",
+        "seedFollowsTheme": true,
+        "seedTheme": "",
+        "shadow": true,
+        "transparency": {
+            "base": 0.95,
+            "enabled": true,
+            "layers": 0.85
+        },
+        "variant": "tonalspot"
+    },
+    "background": {
+        "desktopClock": {
+            "background": {
+                "blur": true,
+                "enabled": false,
+                "opacity": 0.7
+            },
+            "enabled": false,
+            "invertColors": false,
+            "position": "bottom-right",
+            "scale": 1,
+            "shadow": {
+                "blur": 0.4,
+                "enabled": true,
+                "opacity": 0.7
+            }
+        },
+        "excludedScreens": [],
+        "visualiser": {
+            "autoHide": true,
+            "blur": false,
+            "enabled": false,
+            "rounding": 1,
+            "spacing": 1
+        }
+    },
+    "bar": {
+        "activeWindow": {
+            "compact": false,
+            "enabled": false
+        },
+        "apps": {
+            "enabled": false,
+            "items": [],
+            "maxShown": 9,
+            "showRunning": false,
+            "showSettings": false,
+            "useAvailableSpace": false
+        },
+        "clock": {
+            "background": false,
+            "enabled": true,
+            "showDate": true,
+            "showIcon": false,
+            "showSeconds": false
+        },
+        "excludedScreens": [],
+        "layout": {
+            "adopted": true,
+            "center": [
+                "clock"
+            ],
+            "drawer": [],
+            "end": [
+                "overflow",
+                "plugins",
+                "keepAwake",
+                "update",
+                "recording",
+                "notifications",
+                "plugin:superwhisper.panel",
+                "plugin:omarchy.agents",
+                "plugin:omarchy.audio",
+                "power"
+            ],
+            "fresh": [],
+            "hidden": [],
+            "maxShown": 0,
+            "removed": [
+                "activeWindow",
+                "lockStatus",
+                "audio",
+                "microphone",
+                "kbLayout",
+                "network",
+                "bluetooth",
+                "battery",
+                "plugin:omarchy.weather",
+                "plugin:omarchy.elsewhen",
+                "plugin:omarchy.indicators"
+            ],
+            "seen": [
+                "omarchy.active-window",
+                "omarchy.agents",
+                "omarchy.audio",
+                "omarchy.bluetooth",
+                "omarchy.clock",
+                "omarchy.dropbox",
+                "omarchy.elsewhen",
+                "omarchy.indicators",
+                "omarchy.keyboard-layout",
+                "omarchy.media",
+                "omarchy.menu",
+                "omarchy.microphone",
+                "omarchy.monitor",
+                "omarchy.network",
+                "omarchy.power",
+                "omarchy.spacer",
+                "omarchy.system-update",
+                "omarchy.tailscale",
+                "omarchy.tray",
+                "omarchy.weather",
+                "omarchy.workspaces",
+                "superwhisper.panel",
+                "~sections-v2"
+            ],
+            "showDuplicates": false,
+            "start": [
+                "logo",
+                "workspaces",
+                "tray",
+                "apps"
+            ]
+        },
+        "logo": true,
+        "logoIcon": "omarchy",
+        "persistent": true,
+        "plugins": {
+            "compact": false,
+            "enabled": true,
+            "hidden": [],
+            "unpinned": []
+        },
+        "popouts": {
+            "activeWindow": true,
+            "statusIcons": true,
+            "tray": false
+        },
+        "position": "left",
+        "power": true,
+        "screenPositions": [],
+        "scroll": {
+            "brightness": true,
+            "volume": true,
+            "workspaces": true
+        },
+        "showOnHover": true,
+        "status": {
+            "audio": false,
+            "battery": false,
+            "bluetooth": false,
+            "bluetoothConnectedOnly": false,
+            "kbLayout": false,
+            "keepAwake": true,
+            "lockStatus": false,
+            "microphone": false,
+            "microphoneInUseOnly": false,
+            "network": false,
+            "notifications": true,
+            "update": true
+        },
+        "tray": {
+            "background": false,
+            "cascade": true,
+            "compact": false,
+            "enabled": true,
+            "hiddenIcons": [],
+            "recolour": false
+        },
+        "workspaces": {
+            "activeIndicator": true,
+            "activeTrail": true,
+            "display": "shapes",
+            "maxWindowIcons": 5,
+            "occupiedBg": false,
+            "showWindows": false,
+            "shown": 5,
+            "specialDisplay": "icons",
+            "specialShowWindows": true
+        }
+    },
+    "border": {
+        "rounding": 13,
+        "smoothing": 8,
+        "thickness": 4
+    },
+    "dashboard": {
+        "clockSeconds": false,
+        "enabled": true,
+        "lyrics": true,
+        "mediaGif": true,
+        "performance": {
+            "showBattery": false,
+            "showCpu": true,
+            "showGpu": true,
+            "showMemory": true,
+            "showNetwork": true,
+            "showStorage": true
+        },
+        "showOnHover": true,
+        "tabs": {
+            "dashboard": true,
+            "media": true,
+            "performance": true,
+            "weather": true
+        },
+        "visualiser": true
+    },
+    "display": {
+        "cursorSize": 0,
+        "linkBrightness": false,
+        "nightFrom": "20:00",
+        "nightSchedule": "off",
+        "nightTemp": 4000,
+        "nightTo": "07:00",
+        "quickOnConnect": false,
+        "zeroScaling": "auto"
+    },
+    "general": {
+        "clock24": true,
+        "units": "metric",
+        "weatherLocation": "Sao Paulo"
+    },
+    "glass": {
+        "bevel": 18,
+        "dispersion": 0.35,
+        "dome": 0.35,
+        "enabled": false,
+        "frost": 5,
+        "lens": true,
+        "lensFrost": 0.3,
+        "light": 1,
+        "motion": true,
+        "nested": true,
+        "opacity": 0.36,
+        "pointer": true,
+        "refraction": 1,
+        "tone": "milk",
+        "toneAmount": 0.35,
+        "tuneBlur": true
+    },
+    "launcher": {
+        "actionPrefix": ">",
+        "dangerousActions": true,
+        "dragThreshold": 50,
+        "enabled": true,
+        "favouriteApps": [],
+        "hiddenApps": [],
+        "maxShown": 7,
+        "maxWallpapers": 9,
+        "menuPrefix": ":",
+        "themePicker": "omacale",
+        "vimKeybinds": false,
+        "wallpaperPicker": "omacale"
+    },
+    "liquid": {
+        "bulge": 0.6,
+        "damping": 18,
+        "detach": {
+            "neckBreak": true,
+            "ripples": true,
+            "stray": true
+        },
+        "drawers": {
+            "dashboard": true,
+            "launcher": true,
+            "osd": true,
+            "overview": true,
+            "popouts": true,
+            "session": true,
+            "settings": true,
+            "sidebar": true,
+            "utilities": true
+        },
+        "enabled": false,
+        "narrow": 0.07,
+        "neck": true,
+        "neckWidth": 20,
+        "preset": "balanced",
+        "rounding": true,
+        "sag": 220,
+        "stiffness": 170,
+        "style": "slide",
+        "wobble": 260
+    },
+    "lock": {
+        "autoFellBack": false,
+        "blankAfter": 300,
+        "blur": true,
+        "enabled": true,
+        "fellBackVersion": "",
+        "fetch": false,
+        "hideNotifs": true,
+        "media": false,
+        "notifs": false,
+        "recolourLogo": true,
+        "resources": false,
+        "revealPassword": false,
+        "useWallpaper": true,
+        "weather": false
+    },
+    "morph": {
+        "enabled": false
+    },
+    "notifs": {
+        "autoFellBack": false,
+        "fellBackVersion": "",
+        "groupPreviewNum": 3,
+        "openExpanded": false,
+        "popups": {
+            "enabled": true,
+            "width": 430
+        },
+        "screen": "all"
+    },
+    "osd": {
+        "autoFellBack": false,
+        "enableBrightness": true,
+        "enableMicrophone": false,
+        "enabled": true,
+        "fellBackVersion": "",
+        "hideDelay": 2000,
+        "screen": "all",
+        "toasts": true
+    },
+    "overview": {
+        "columns": 5,
+        "detached": false,
+        "enabled": true,
+        "gap": 48,
+        "hideEmptyRows": true,
+        "position": "middle",
+        "previews": true,
+        "rows": 2,
+        "scale": 0.18,
+        "showIcons": true
+    },
+    "services": {
+        "brightnessStep": 5,
+        "mediaUpdateInterval": 500,
+        "resourceUpdateInterval": 1000,
+        "visualiserBars": 60,
+        "volumeStep": 5
+    },
+    "session": {
+        "commands": {
+            "hibernate": "",
+            "lock": "",
+            "logout": "",
+            "reboot": "",
+            "screensaver": "",
+            "shutdown": ""
+        },
+        "dragThreshold": 30,
+        "enabled": true,
+        "extraButtons": true,
+        "extraStyle": "compact",
+        "gif": true,
+        "gifPath": "",
+        "gifSpeed": 0.7,
+        "hidden": [],
+        "icons": {
+            "hibernate": "",
+            "lock": "",
+            "logout": "",
+            "reboot": "",
+            "screensaver": "",
+            "shutdown": ""
+        },
+        "menu": "omacale",
+        "order": [
+            "logout",
+            "shutdown",
+            "gif",
+            "hibernate",
+            "reboot",
+            "lock",
+            "screensaver"
+        ],
+        "sleepAction": "hibernate",
+        "vimKeybinds": false
+    },
+    "sidebar": {
+        "enabled": true,
+        "width": 400
+    },
+    "utilities": {
+        "enabled": true,
+        "maxToasts": 4,
+        "toasts": {
+            "audioInputChanged": true,
+            "audioOutputChanged": true,
+            "chargingChanged": true,
+            "dndChanged": true,
+            "gameModeChanged": true,
+            "nowPlaying": false
+        },
+        "toggles": {
+            "bluetooth": true,
+            "dnd": true,
+            "gameMode": true,
+            "mic": true,
+            "nightlight": false,
+            "settings": true,
+            "wifi": true
+        },
+        "width": 430
+    }
+}

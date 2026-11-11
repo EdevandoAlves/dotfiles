@@ -1,0 +1,5 @@
+ente-auth-bin
+limusic-bin
+nectarlink-bin
+waystone
+zapfast-bin

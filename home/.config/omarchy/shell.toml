@@ -1,0 +1,52 @@
+# >>> omacale:surfaces v1 pad=0 created=1 >>>
+# Written by Omacale (Settings › Wallpaper & style); turning the option off removes it.
+[popups]
+background = "#141414"
+text = "#dbe5de"
+border = "#3e4941"
+[tooltip]
+background = "#141414"
+text = "#dbe5de"
+border = "#3e4941"
+[notifications]
+countdown = "#95d5aa"
+background = "#141414"
+text = "#dbe5de"
+border = "#3e4941"
+[launcher]
+scrim = "#000000"
+selected-background = "#dbe5de"
+selected-text = "#95d5aa"
+selected-border = "#3e4941"
+background = "#141414"
+text = "#dbe5de"
+border = "#3e4941"
+[menu]
+scrim = "#000000"
+selected-background = "#dbe5de"
+selected-text = "#95d5aa"
+selected-border = "#3e4941"
+background = "#141414"
+text = "#dbe5de"
+border = "#3e4941"
+[polkit]
+text-error = "#ffb3b0"
+border-error = "#ffb3b0"
+background = "#141414"
+text = "#dbe5de"
+border = "#3e4941"
+[image-picker]
+scrim = "#000000"
+text = "#dbe5de"
+selected-border = "#95d5aa"
+unselected-border = "#3e4941"
+[controls]
+normal-color = "#dbe5de"
+normal-border = "#3e4941"
+hover-cursor-color = "#dbe5de"
+hover-cursor-border = "#3e4941"
+focus-color = "#dbe5de"
+focus-border = "#95d5aa"
+selected-color = "#95d5aa"
+selected-border = "#95d5aa"
+# <<< omacale:surfaces <<<

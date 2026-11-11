@@ -1,0 +1,15 @@
+[Unit]
+Description=GPU Screen Recorder — replay buffer (últimos 60s)
+After=graphical-session.target
+
+[Service]
+Type=simple
+# Espera /data montar (até 60s) em vez de pular o serviço no boot
+ExecStartPre=/bin/sh -c 'for i in $(seq 1 60); do mountpoint -q /data && [ -d /data/midia/clipes ] && exit 0; sleep 1; done; exit 1'
+ExecStartPre=/bin/rm -f %t/gsr-recording.active
+ExecStart=/usr/bin/gpu-screen-recorder -w HDMI-A-1 -c mp4 -f 60 -r 60 -replay-storage ram -bm cbr -q 20000 -fm cfr -a default_output -o /data/midia/clipes -ro /data/midia/gravacoes -ipc %t/gsr.sock
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target
