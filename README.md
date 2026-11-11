@@ -87,6 +87,22 @@ backup. O diretório de backup não é versionado.
   itens específicos de hardware (`amd-ucode`, etc.) antes de instalar em outro
   PC.
 
+## Firefox e acentos (dead keys)
+
+O Firefox em Wayland nativo tem um bug conhecido com `us-intl` + Hyprland
+(Bugzilla 2004150): os dead keys saem errados. O repo contorna isso com:
+
+- `home/.local/bin/firefox-xwayland` — força `MOZ_ENABLE_WAYLAND=0`,
+  `GTK_IM_MODULE=simple` e aplica `us-intl` no XWayland antes de abrir;
+- `home/.local/share/applications/firefox.desktop` — aponta o launcher para
+  esse wrapper;
+- `home/.config/environment.d/omarchy-firefox-wayland.conf` — mantém
+  `MOZ_ENABLE_WAYLAND=0` para os próximos logins.
+
+Feche **todas** as janelas do Firefox e abra de novo pelo launcher. Quando o
+Firefox corrigir o backend Wayland, remova o wrapper e volte
+`MOZ_ENABLE_WAYLAND=1`.
+
 ## Atualizar
 
 ```bash
