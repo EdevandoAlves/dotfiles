@@ -35,6 +35,7 @@ python3 scripts/link.py --dry-run
 
 ## O que fica centralizado
 
+- `~/.agents/skills/omarchy/` — skill local com o guia de dotfiles
 - `~/.config/hypr/*.lua` e `.conf`
 - `~/.config/omarchy/shell.json`, `shell.toml`, `language`, `keyboard-layouts`
 - `~/.config/omarchy/extensions/`, `hooks/`, `themed/`, `branding/`, `defaults/`

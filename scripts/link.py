@@ -25,6 +25,7 @@ DRY = "--dry-run" in sys.argv
 # Diretórios centralizados inteiros (plugins e temas). Tudo o que estiver
 # dentro deles é linkado pelo diretório, não arquivo a arquivo.
 WHOLE = [
+    ".agents/skills/omarchy",
     ".config/omarchy/plugins/omacale.bar",
     ".config/omarchy/plugins/vz.lock",
     ".config/omarchy/plugins/vz.notifications",
