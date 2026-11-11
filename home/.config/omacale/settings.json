@@ -42,7 +42,8 @@
                 "opacity": 0.7
             }
         },
-        "excludedScreens": [],
+        "excludedScreens": [
+        ],
         "visualiser": {
             "autoHide": true,
             "blur": false,
@@ -58,7 +59,8 @@
         },
         "apps": {
             "enabled": false,
-            "items": [],
+            "items": [
+            ],
             "maxShown": 9,
             "showRunning": false,
             "showSettings": false,
@@ -71,13 +73,15 @@
             "showIcon": false,
             "showSeconds": false
         },
-        "excludedScreens": [],
+        "excludedScreens": [
+        ],
         "layout": {
             "adopted": true,
             "center": [
                 "clock"
             ],
-            "drawer": [],
+            "drawer": [
+            ],
             "end": [
                 "overflow",
                 "plugins",
@@ -90,8 +94,10 @@
                 "plugin:omarchy.audio",
                 "power"
             ],
-            "fresh": [],
-            "hidden": [],
+            "fresh": [
+            ],
+            "hidden": [
+            ],
             "maxShown": 0,
             "removed": [
                 "activeWindow",
@@ -145,8 +151,10 @@
         "plugins": {
             "compact": false,
             "enabled": true,
-            "hidden": [],
-            "unpinned": []
+            "hidden": [
+            ],
+            "unpinned": [
+            ]
         },
         "popouts": {
             "activeWindow": true,
@@ -155,7 +163,8 @@
         },
         "position": "left",
         "power": true,
-        "screenPositions": [],
+        "screenPositions": [
+        ],
         "scroll": {
             "brightness": true,
             "volume": true,
@@ -181,7 +190,8 @@
             "cascade": true,
             "compact": false,
             "enabled": true,
-            "hiddenIcons": [],
+            "hiddenIcons": [
+            ],
             "recolour": false
         },
         "workspaces": {
@@ -261,8 +271,10 @@
         "dangerousActions": true,
         "dragThreshold": 50,
         "enabled": true,
-        "favouriteApps": [],
-        "hiddenApps": [],
+        "favouriteApps": [
+        ],
+        "hiddenApps": [
+        ],
         "maxShown": 7,
         "maxWallpapers": 9,
         "menuPrefix": ":",
@@ -375,7 +387,8 @@
         "gif": true,
         "gifPath": "",
         "gifSpeed": 0.7,
-        "hidden": [],
+        "hidden": [
+        ],
         "icons": {
             "hibernate": "",
             "lock": "",
