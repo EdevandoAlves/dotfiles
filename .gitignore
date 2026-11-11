@@ -2,7 +2,6 @@
 *.bak
 *.bak.*
 *.pre-dotfiles
-*.omacale-orig
 **/plugins-backups/
 **/preview.png
 **/preview.jpg
