@@ -29,6 +29,78 @@ function M.pick_one(items, prompt, on_choice)
   end)
 end
 
+---Seleção múltipla (Snacks): Space/Tab alterna, Enter confirma.
+---Nada selecionado devolve {} (etapa opcional pode ser pulada).
+---@param items string[]
+---@param prompt string
+---@param on_confirm fun(selected: string[])
+function M.pick_many(items, prompt, on_confirm)
+  local mod = M.snacks()
+  if not mod or type(mod.picker.pick) ~= "function" then
+    -- fallback sem Snacks: lista separada por vírgula
+    vim.ui.input({ prompt = prompt .. " (separados por vírgula; vazio = nenhum): " }, function(value)
+      if value == nil then
+        return
+      end
+      local out = {}
+      for part in value:gmatch("[^,]+") do
+        local item = vim.trim(part)
+        if item ~= "" then
+          out[#out + 1] = item
+        end
+      end
+      on_confirm(out)
+    end)
+    return
+  end
+
+  local entries = {}
+  for i, item in ipairs(items) do
+    entries[#entries + 1] = { text = item, item = { text = item, idx = i } }
+  end
+
+  mod.picker.pick({
+    title = prompt,
+    source = "java_menu_multi",
+    finder = function()
+      return vim.deepcopy(entries)
+    end,
+    -- "text" devolve chunks de highlight; uma string quebraria o render
+    format = "text",
+    win = {
+      input = {
+        keys = {
+          ["<Space>"] = { "select_and_next", mode = { "n", "i" } },
+          ["<Tab>"] = { "select_and_next", mode = { "n", "i" } },
+        },
+      },
+      list = {
+        keys = {
+          ["<Space>"] = "select_and_next",
+          ["<Tab>"] = "select_and_next",
+        },
+      },
+    },
+    confirm = function(picker)
+      -- sem fallback: o item sob o cursor não conta como selecionado
+      local selected = picker:selected()
+      picker:close()
+      table.sort(selected, function(a, b)
+        return (a.item and a.item.idx or 0) < (b.item and b.item.idx or 0)
+      end)
+      local out = {}
+      for _, entry in ipairs(selected) do
+        if entry.item and entry.item.text then
+          out[#out + 1] = entry.item.text
+        end
+      end
+      vim.schedule(function()
+        on_confirm(out)
+      end)
+    end,
+  })
+end
+
 ---Entrada central de texto (Snacks), com fallback para vim.ui.input.
 function M.ask(prompt, default, on_confirm)
   local mod = M.snacks()
