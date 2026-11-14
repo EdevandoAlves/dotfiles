@@ -31,10 +31,24 @@ end
 
 ---Seleção múltipla (Snacks): Space/Tab alterna, Enter confirma.
 ---Nada selecionado devolve {} (etapa opcional pode ser pulada).
----@param items string[]
+---Itens podem ser strings ou `{ text = "…", value = … }`; o callback recebe os
+---valores (ou o próprio texto).
+---@param items (string|{text:string, value:any})[]
 ---@param prompt string
----@param on_confirm fun(selected: string[])
-function M.pick_many(items, prompt, on_confirm)
+---@param on_confirm fun(selected:any[])
+---@param opts { fallback: boolean|nil }|nil fallback = Enter sem seleção usa o item sob o cursor
+function M.pick_many(items, prompt, on_confirm, opts)
+  opts = opts or {}
+
+  local entries = {}
+  local by_text = {}
+  for i, item in ipairs(items) do
+    local text = type(item) == "table" and item.text or tostring(item)
+    local value = type(item) == "table" and item.value or item
+    by_text[text] = value
+    entries[#entries + 1] = { text = text, item = { text = text, value = value, idx = i } }
+  end
+
   local mod = M.snacks()
   if not mod or type(mod.picker.pick) ~= "function" then
     -- fallback sem Snacks: lista separada por vírgula
@@ -44,19 +58,14 @@ function M.pick_many(items, prompt, on_confirm)
       end
       local out = {}
       for part in value:gmatch("[^,]+") do
-        local item = vim.trim(part)
-        if item ~= "" then
-          out[#out + 1] = item
+        local text = vim.trim(part)
+        if text ~= "" then
+          out[#out + 1] = by_text[text] or text
         end
       end
       on_confirm(out)
     end)
     return
-  end
-
-  local entries = {}
-  for i, item in ipairs(items) do
-    entries[#entries + 1] = { text = item, item = { text = item, idx = i } }
   end
 
   mod.picker.pick({
@@ -82,16 +91,15 @@ function M.pick_many(items, prompt, on_confirm)
       },
     },
     confirm = function(picker)
-      -- sem fallback: o item sob o cursor não conta como selecionado
-      local selected = picker:selected()
+      local selected = picker:selected({ fallback = opts.fallback == true })
       picker:close()
       table.sort(selected, function(a, b)
         return (a.item and a.item.idx or 0) < (b.item and b.item.idx or 0)
       end)
       local out = {}
       for _, entry in ipairs(selected) do
-        if entry.item and entry.item.text then
-          out[#out + 1] = entry.item.text
+        if entry.item and entry.item.value ~= nil then
+          out[#out + 1] = entry.item.value
         end
       end
       vim.schedule(function()

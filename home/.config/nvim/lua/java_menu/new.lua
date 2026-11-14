@@ -185,23 +185,19 @@ local function notify(msg, level)
   vim.notify("Java: " .. msg, level or vim.log.levels.INFO)
 end
 
----Seleção central (Snacks) com fallback para o vim.ui.select nativo.
----Não substitui vim.ui.select globalmente.
+---Seleção central (Snacks) via componente compartilhado, com fallback para o
+---vim.ui.select nativo. Não substitui vim.ui.select globalmente.
 local function select(items, opts, on_choice)
-  local ok, snacks = pcall(require, "snacks")
-  if ok and snacks.picker and type(snacks.picker.select) == "function" then
-    return snacks.picker.select(items, opts, on_choice)
+  local prompt = opts and opts.prompt or "Java"
+  if ui.snacks() then
+    return ui.pick_one(items, prompt, on_choice)
   end
   return vim.ui.select(items, opts, on_choice)
 end
 
----Entrada central (Snacks) com fallback para o vim.ui.input nativo.
+---Entrada central de texto via componente compartilhado (fallback vim.ui.input).
 local function input(opts, on_confirm)
-  local ok, snacks = pcall(require, "snacks")
-  if ok and snacks.input and type(snacks.input.input) == "function" then
-    return snacks.input.input(opts, on_confirm)
-  end
-  return vim.ui.input(opts, on_confirm)
+  return ui.ask(opts.prompt, opts.default, on_confirm)
 end
 
 ---@param name string
@@ -707,12 +703,16 @@ local FIELD_MODIFIERS = {
   { label = "static", value = "static" },
 }
 
-local function choose_modifier(on_done)
+local function choose_modifier(on_done, current)
   local labels = {}
   local by_label = {}
   for _, modifier in ipairs(FIELD_MODIFIERS) do
-    labels[#labels + 1] = modifier.label
-    by_label[modifier.label] = modifier.value
+    local label = modifier.label
+    if current == modifier.value then
+      label = label .. "  (atual)"
+    end
+    labels[#labels + 1] = label
+    by_label[label] = modifier.value
   end
   select(labels, { prompt = "Java: modificador do campo" }, function(choice)
     if choice == nil then
@@ -722,24 +722,58 @@ local function choose_modifier(on_done)
   end)
 end
 
-local function ask_fields(state)
+local function field_noun(kind)
+  if kind.fields == "components" then
+    return "componente"
+  elseif kind.fields == "methods" then
+    return "método"
+  elseif kind.fields == "elements" then
+    return "elemento"
+  end
+  return "campo"
+end
+
+local function field_text(kind, field)
+  if kind.fields == "components" then
+    return field.type .. " " .. field.name
+  elseif kind.fields == "methods" or kind.fields == "elements" then
+    return field.type .. " " .. field.name .. "()"
+  end
+  return field.mod .. " " .. field.type .. " " .. field.name
+end
+
+---@param state table
+---@param edit_index number|nil ausente = adicionar; presente = editar no lugar
+local function ask_fields(state, edit_index)
   local kind = state.kind
   local is_component = kind.fields == "components"
   local is_member = kind.fields == "methods" or kind.fields == "elements"
+  local target = edit_index and state.fields[edit_index] or nil
+  local field = target or { type = "", name = "", mod = "private" }
 
   local ask_one
+  local ask_more
 
   local more_prompt = is_component and "Java: componentes"
     or kind.fields == "methods" and "Java: métodos"
     or kind.fields == "elements" and "Java: elementos"
     or "Java: campos"
 
-  local function ask_more()
+  local function finish()
+    if target then
+      return ask_options(state)
+    end
+    state.fields[#state.fields + 1] = field
+    ask_more()
+  end
+
+  ask_more = function()
     select({ "Adicionar outro", "Voltar às opções" }, { prompt = more_prompt }, function(choice)
       if choice == nil then
         return
       end
       if choice == "Adicionar outro" then
+        field = { type = "", name = "", mod = "private" }
         return ask_one()
       end
       ask_options(state)
@@ -750,7 +784,7 @@ local function ask_fields(state)
     local type_prompt = is_component and "Tipo do componente: "
       or is_member and "Tipo de retorno: "
       or "Tipo do campo (FQN ou primitivo): "
-    input({ prompt = type_prompt }, function(type_text)
+    input({ prompt = type_prompt, default = field.type }, function(type_text)
       if type_text == nil then
         return
       end
@@ -759,12 +793,13 @@ local function ask_fields(state)
         notify("tipo Java inválido: " .. (type_text == "" and "(vazio)" or type_text), vim.log.levels.WARN)
         return ask_one()
       end
+      field.type = type_text
 
       local name_prompt = is_component and "Nome do componente: "
         or kind.fields == "methods" and "Nome do método: "
         or kind.fields == "elements" and "Nome do elemento: "
         or "Nome do campo: "
-      input({ prompt = name_prompt }, function(field_name)
+      input({ prompt = name_prompt, default = field.name }, function(field_name)
         if field_name == nil then
           return
         end
@@ -776,25 +811,26 @@ local function ask_fields(state)
           )
           return ask_one()
         end
-        for _, existing in ipairs(state.fields) do
-          if existing.name == field_name then
+        for index, existing in ipairs(state.fields) do
+          if index ~= edit_index and existing.name == field_name then
             notify("já existe um campo/componente com esse nome: " .. field_name, vim.log.levels.WARN)
             return ask_one()
           end
         end
+        field.name = field_name
 
         if is_component or is_member then
-          state.fields[#state.fields + 1] = { type = type_text, name = field_name, mod = "private" }
-          return ask_more()
+          field.mod = "private"
+          return finish()
         end
 
         choose_modifier(function(mod)
           if mod == nil then
             return
           end
-          state.fields[#state.fields + 1] = { type = type_text, name = field_name, mod = mod }
-          ask_more()
-        end)
+          field.mod = mod
+          finish()
+        end, target and target.mod or nil)
       end)
     end)
   end
@@ -834,6 +870,69 @@ local function field_label(kind)
     return "Elementos da anotação"
   end
   return "Campos"
+end
+
+---Pergunta (ou edita) package e nome preservando as demais escolhas.
+---@param state table
+---@param on_done fun()
+local function ask_identity(state, on_done)
+  input({ prompt = "Package (vazio = default): ", default = state.pkg or "" }, function(pkg)
+    if pkg == nil then
+      return -- cancelado
+    end
+    pkg = vim.trim(pkg)
+    if not is_package(pkg) then
+      notify("package Java inválido: " .. pkg, vim.log.levels.WARN)
+      return ask_identity(state, on_done)
+    end
+    state.pkg = pkg
+
+    input({ prompt = "Nome do tipo: ", default = state.name or "" }, function(name)
+      if name == nil then
+        return -- cancelado
+      end
+      name = vim.trim(name)
+      if not is_identifier(name) then
+        notify("identificador Java inválido: " .. (name == "" and "(vazio)" or name), vim.log.levels.WARN)
+        return ask_identity(state, on_done)
+      end
+      state.name = name
+      on_done()
+    end)
+  end)
+end
+
+local function remove_from_list(list, prompt, on_done)
+  local labels = {}
+  for index, item in ipairs(list) do
+    labels[index] = index .. ". " .. item
+  end
+  select(labels, { prompt = prompt }, function(choice)
+    if choice == nil then
+      return
+    end
+    local index = tonumber(choice:match("^(%d+)"))
+    if index and list[index] then
+      table.remove(list, index)
+      on_done()
+    end
+  end)
+end
+
+local function pick_field(state, prompt, on_pick)
+  local labels = {}
+  for index, field in ipairs(state.fields) do
+    labels[index] = index .. ". " .. field_text(state.kind, field)
+  end
+  select(labels, { prompt = prompt }, function(choice)
+    if choice == nil then
+      return
+    end
+    local index = tonumber(choice:match("^(%d+)"))
+    if index and state.fields[index] then
+      on_pick(index)
+    end
+  end)
 end
 
 ask_options = function(state)
@@ -877,6 +976,47 @@ ask_options = function(state)
       ask_values(state)
     end)
   end
+
+  local noun = field_noun(kind)
+  if kind.implements and #state.implements > 0 then
+    add("Remover interface…", function()
+      remove_from_list(state.implements, "Java: remover interface", function()
+        ask_options(state)
+      end)
+    end)
+  end
+  if kind.extends_slot == "interface" and #state.parents > 0 then
+    add("Remover interface pai…", function()
+      remove_from_list(state.parents, "Java: remover interface pai", function()
+        ask_options(state)
+      end)
+    end)
+  end
+  if kind.fields and #state.fields > 0 then
+    add("Editar " .. noun .. "…", function()
+      pick_field(state, "Java: editar " .. noun, function(index)
+        ask_fields(state, index)
+      end)
+    end)
+    add("Remover " .. noun .. "…", function()
+      pick_field(state, "Java: remover " .. noun, function(index)
+        table.remove(state.fields, index)
+        ask_options(state)
+      end)
+    end)
+  end
+  if kind.values and #state.values > 0 then
+    add("Remover constante…", function()
+      remove_from_list(state.values, "Java: remover constante", function()
+        ask_options(state)
+      end)
+    end)
+  end
+  add("Editar nome/package…", function()
+    ask_identity(state, function()
+      ask_options(state)
+    end)
+  end)
 
   select(items, { prompt = "Java: opções (opcional)" }, function(choice)
     if choice == nil then
@@ -1029,13 +1169,20 @@ end
 ---@param state table
 show_summary = function(state)
   local lines = summary_lines(state)
-  local items = { "Criar", "Cancelar" }
+  local items = { "Criar", "Voltar às opções", "Cancelar" }
   vim.list_extend(items, lines)
 
   select(items, { prompt = "Java: resumo — Enter cria, Esc cancela" }, function(choice)
+    if choice == "Voltar às opções" then
+      return ask_options(state)
+    end
     if choice ~= "Criar" then
       return -- cancelado
     end
+    if state.done then
+      return
+    end
+    state.done = true
     M.create(state.kind, state.root, state.pkg, state.name, build_opts(state))
   end)
 end
@@ -1044,45 +1191,27 @@ M._summary = show_summary
 
 -- ---------- entradas ----------
 
----Pergunta package (com sugestão) e nome, depois abre as opções.
+---Inicia o wizard com o estado das etapas anteriores.
 ---@param kind JavaKind
 ---@param source_root string
 ---@param suggested_pkg string
 ---@param deps string
-local function ask(kind, source_root, suggested_pkg, deps)
-  input({ prompt = "Package (vazio = default): ", default = suggested_pkg }, function(pkg)
-    if pkg == nil then
-      return -- cancelado
-    end
-    pkg = vim.trim(pkg)
-    if not is_package(pkg) then
-      notify("package Java inválido: " .. pkg, vim.log.levels.WARN)
-      return ask(kind, source_root, suggested_pkg, deps)
-    end
-
-    input({ prompt = "Nome do tipo: " }, function(name)
-      if name == nil then
-        return -- cancelado
-      end
-      name = vim.trim(name)
-      if not is_identifier(name) then
-        notify("identificador Java inválido: " .. (name == "" and "(vazio)" or name), vim.log.levels.WARN)
-        return ask(kind, source_root, pkg, deps)
-      end
-
-      ask_options({
-        kind = kind,
-        root = source_root,
-        pkg = pkg,
-        name = name,
-        deps = deps,
-        extends = nil,
-        parents = {},
-        implements = {},
-        fields = {},
-        values = {},
-      })
-    end)
+local function start(kind, source_root, suggested_pkg, deps)
+  local state = {
+    kind = kind,
+    root = source_root,
+    pkg = suggested_pkg,
+    name = nil,
+    deps = deps,
+    extends = nil,
+    parents = {},
+    implements = {},
+    fields = {},
+    values = {},
+    done = false,
+  }
+  ask_identity(state, function()
+    ask_options(state)
   end)
 end
 
@@ -1119,13 +1248,13 @@ local function pick_root(kind, roots, deps)
           notify("diretório inexistente: " .. path, vim.log.levels.ERROR)
           return
         end
-        ask(kind, path, project.package_for(0, path), deps)
+        start(kind, path, project.package_for(0, path), deps)
       end)
       return
     end
     for _, r in ipairs(ordered) do
       if r.label == choice then
-        return ask(kind, r.path, project.package_for(0, r.path), deps)
+        return start(kind, r.path, project.package_for(0, r.path), deps)
       end
     end
   end)
