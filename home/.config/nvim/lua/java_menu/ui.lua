@@ -29,6 +29,15 @@ function M.pick_one(items, prompt, on_choice)
   end)
 end
 
+---Entrada central de texto (Snacks), com fallback para vim.ui.input.
+function M.ask(prompt, default, on_confirm)
+  local mod = M.snacks()
+  if mod and mod.input and type(mod.input.input) == "function" then
+    return mod.input.input({ prompt = prompt, default = default or "" }, on_confirm)
+  end
+  return vim.ui.input({ prompt = prompt, default = default or "" }, on_confirm)
+end
+
 ---Menu central com estados disponíveis/indisponíveis.
 ---@param entries table[] { key, label, enabled, reason }
 ---@param prompt string
@@ -37,7 +46,8 @@ function M.menu(entries, prompt, on_choice)
   local labels, by_label = {}, {}
   for _, entry in ipairs(entries) do
     local text = entry.label
-    if not entry.enabled then
+    -- só é indisponível quando dito explicitamente (enabled == false)
+    if entry.enabled == false then
       text = text .. "  (indisponível: " .. (entry.reason or "sem motivo") .. ")"
     end
     labels[#labels + 1] = text
@@ -49,7 +59,7 @@ function M.menu(entries, prompt, on_choice)
     if not entry then
       return
     end
-    if not entry.enabled then
+    if entry.enabled == false then
       M.notify(entry.reason or "operação indisponível", vim.log.levels.WARN)
       return
     end

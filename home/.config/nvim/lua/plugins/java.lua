@@ -14,6 +14,13 @@ return {
     end,
 
     config = function()
+      local java_project = require("java_menu.project")
+      local warned = {}
+
+      local function related(a, b)
+        return a == b or (a:sub(1, #b + 1) == b .. "/") or (b:sub(1, #a + 1) == a .. "/")
+      end
+
       vim.api.nvim_create_autocmd("FileType", {
         pattern = "java",
         callback = function(ev)
@@ -22,16 +29,39 @@ return {
             return
           end
 
-          -- Projeto Maven/Gradle/git; se não houver marcador, cai para o
-          -- diretório do arquivo para que arquivos soltos ainda tenham LSP.
-          local root_dir = vim.fs.root(file, {
-            "pom.xml",
-            "build.gradle",
-            "build.gradle.kts",
-            "settings.gradle",
-            "settings.gradle.kts",
-            ".git",
-          }) or vim.fs.dirname(file)
+          -- Agregador Maven/Gradle quando existir (project.lua sobe até o pai
+          -- que declara o módulo); senão o marcador mais próximo; senão o
+          -- diretório do arquivo, para arquivos soltos. `.git` não é marcador
+          -- de projeto Java.
+          local root_dir = java_project.root(ev.buf)
+            or vim.fs.root(file, {
+              "pom.xml",
+              "build.gradle",
+              "build.gradle.kts",
+              "settings.gradle",
+              "settings.gradle.kts",
+            })
+            or vim.fs.dirname(file)
+
+          -- Um cliente por projeto: se já existe jdtls com outro root do mesmo
+          -- projeto (sessão iniciada antes do agregador ser reconhecido), não
+          -- abrimos um segundo cliente nem reiniciamos o servidor em silêncio.
+          for _, client in ipairs(vim.lsp.get_clients({ name = "jdtls" })) do
+            local other = client.config.root_dir
+            if other and other ~= root_dir and related(other, root_dir) then
+              if not warned[other] then
+                warned[other] = true
+                vim.notify(
+                  ("jdtls já está ativo com root %s; para usar o workspace do agregador (%s) reinicie o Neovim"):format(
+                    other,
+                    root_dir
+                  ),
+                  vim.log.levels.WARN
+                )
+              end
+              return
+            end
+          end
 
           local jdtls = vim.fn.exepath("jdtls")
           if jdtls == "" then

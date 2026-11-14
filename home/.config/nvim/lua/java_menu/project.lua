@@ -51,13 +51,12 @@ end
 local function declares_module(parent, child)
   local pom = parent .. "/pom.xml"
   if isfile(pom) then
-    for _, line in ipairs(vim.fn.readfile(pom)) do
-      local mod = line:match("<module>%s*([^<%s]+)%s*</module>")
-      if mod then
-        mod = mod:gsub("/+$", "")
-        if vim.fs.basename(mod) == child then
-          return true
-        end
+    -- lê o arquivo inteiro: vários <module> podem estar na mesma linha
+    local text = table.concat(vim.fn.readfile(pom), "\n")
+    for mod in text:gmatch("<module%s*>%s*([^<%s]+)%s*</module>") do
+      mod = mod:gsub("/+$", "")
+      if vim.fs.basename(mod) == child then
+        return true
       end
     end
     return false
@@ -132,6 +131,13 @@ local function modules(root)
     end
   end
   return list
+end
+
+---Módulos do projeto (raiz + submódulos com arquivo de build).
+---@param root string
+---@return string[]
+function M.modules(root)
+  return modules(root)
 end
 
 ---Source roots existentes (src/main/java, src/test/java) de cada módulo.

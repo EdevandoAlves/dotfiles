@@ -7,8 +7,167 @@
 -- de marcas Visual antigas e nenhuma operação roda em outro buffer.
 
 local ui = require("java_menu.ui")
+local preview = require("java_menu.preview")
+local project = require("java_menu.project")
+local signature = require("java_menu.signature")
 
 local M = {}
+
+local function encoding()
+  local client = require("jc.lsp").get_jdtls_client()
+  return client and client.offset_encoding or "utf-16"
+end
+
+---Renomear um símbolo: prepareRename (validação) + novo nome + textDocument/rename.
+---O edit NUNCA é aplicado aqui: vai para a prévia.
+local function rename_symbol(bufnr)
+  if not ui.same_buffer(bufnr) then
+    return
+  end
+
+  local current = vim.fn.expand("<cword>")
+  ui.ask("Novo nome: ", current, function(name)
+    if name == nil then
+      return
+    end
+    name = vim.trim(name)
+    if name == "" or name == current then
+      return
+    end
+    if not name:match("^[%a_$][%w_$]*$") then
+      ui.notify("nome inválido: " .. name, vim.log.levels.WARN)
+      return
+    end
+
+    local client = require("jc.lsp").get_jdtls_client()
+    if not client then
+      ui.notify("jdtls não está anexado a este buffer", vim.log.levels.ERROR)
+      return
+    end
+
+    local params = vim.lsp.util.make_position_params(0, client.offset_encoding)
+    params.newName = name
+
+    client:request("textDocument/rename", params, function(err, edit)
+      vim.schedule(function()
+        if err then
+          ui.notify("rename recusado pelo jdtls: " .. (err.message or vim.inspect(err)), vim.log.levels.ERROR)
+          return
+        end
+        if type(edit) ~= "table" or not next(edit) then
+          ui.notify("o jdtls não retornou alterações para esse rename", vim.log.levels.WARN)
+          return
+        end
+        M.preview_edit(edit, bufnr)
+      end)
+    end, bufnr)
+  end)
+end
+
+---Move Class: getMoveDestinations -> destino -> java/move (retorna o edit) -> prévia.
+local function move_class(bufnr)
+  if not ui.same_buffer(bufnr) then
+    return
+  end
+
+  local client = require("jc.lsp").get_jdtls_client()
+  if not client then
+    ui.notify("jdtls não está anexado a este buffer", vim.log.levels.ERROR)
+    return
+  end
+
+  local uri = vim.uri_from_bufnr(bufnr)
+  local file_name = vim.fn.fnamemodify(vim.uri_to_fname(uri), ":t")
+
+  client:request("java/getMoveDestinations", {
+    moveKind = "moveResource",
+    sourceUris = { uri },
+    params = vim.NIL,
+  }, function(err, result)
+    vim.schedule(function()
+      if err then
+        ui.notify("não consegui listar destinos: " .. (err.message or vim.inspect(err)), vim.log.levels.ERROR)
+        return
+      end
+      local destinations = result and result.destinations or {}
+      if #destinations == 0 then
+        ui.notify("o jdtls não ofereceu destinos para esta classe", vim.log.levels.WARN)
+        return
+      end
+
+      local current_dir = vim.fs.dirname(vim.uri_to_fname(uri))
+      local labels, by_label, usable = {}, {}, 0
+
+      for _, dest in ipairs(destinations) do
+        local dir = vim.uri_to_fname(dest.uri)
+        local name = dest.isDefaultPackage and "(default package)" or (dest.displayName or "")
+        local text = name
+        if dest.project then
+          text = text .. "  [" .. tostring(dest.project) .. "]"
+        end
+
+        local reason
+        if dir == current_dir then
+          reason = "já é o package atual"
+        elseif vim.fn.filereadable(dir .. "/" .. file_name) == 1 then
+          reason = "já existe " .. file_name .. " nesse package"
+        end
+
+        if reason then
+          text = text .. "  (indisponível: " .. reason .. ")"
+        else
+          usable = usable + 1
+        end
+
+        labels[#labels + 1] = text
+        by_label[text] = { dest = dest, reason = reason }
+      end
+
+      if usable == 0 then
+        ui.notify("nenhum package de destino disponível", vim.log.levels.WARN)
+        return
+      end
+
+      ui.pick_one(labels, "Java: mover " .. file_name .. " para", function(choice)
+        local picked = by_label[choice]
+        if not picked then
+          return
+        end
+        if picked.reason then
+          ui.notify(picked.reason, vim.log.levels.WARN)
+          return
+        end
+
+        local params = vim.lsp.util.make_position_params(0, client.offset_encoding)
+        params.context = { diagnostics = {} }
+
+        client:request("java/move", {
+          moveKind = "moveResource",
+          sourceUris = { uri },
+          params = params,
+          destination = picked.dest,
+          updateReferences = true,
+        }, function(move_err, move_result)
+          vim.schedule(function()
+            if move_err then
+              ui.notify("move recusado: " .. (move_err.message or vim.inspect(move_err)), vim.log.levels.ERROR)
+              return
+            end
+            if move_result and move_result.errorMessage then
+              ui.notify("move recusado: " .. move_result.errorMessage, vim.log.levels.ERROR)
+              return
+            end
+            if not (move_result and move_result.edit) then
+              ui.notify("o jdtls não retornou alterações para o move", vim.log.levels.WARN)
+              return
+            end
+            M.preview_edit(move_result.edit, bufnr)
+          end)
+        end, bufnr)
+      end)
+    end)
+  end, bufnr)
+end
 
 local BLOCK_MODE = "\22" -- <C-v>
 
@@ -116,11 +275,24 @@ local RUNNERS = {
   flip_args = function()
     require("jc.refactor").flip_call_args()
   end,
+  change_signature = function()
+    signature.change_signature(M._bufnr, function(edit)
+      M.preview_edit(edit, M._bufnr)
+    end)
+  end,
+  rename = function()
+    rename_symbol(M._bufnr)
+  end,
+  move_class = function()
+    move_class(M._bufnr)
+  end,
 }
 
 ---@param ctx VisualCtx|nil
 ---@param bufnr number
-local function entries(ctx, bufnr)
+---@param rename_ready boolean|nil
+---@param rename_reason string|nil
+local function entries(ctx, bufnr, rename_ready, rename_reason)
   local attached = ui.jdtls_attached(bufnr)
   local parser = ui.has_parser(bufnr, "java")
   local no_jdtls = "jdtls não está anexado a este buffer"
@@ -165,7 +337,124 @@ local function entries(ctx, bufnr)
       enabled = parser,
       reason = "parser treesitter de Java não instalado",
     },
+    {
+      key = "rename",
+      label = "Rename Symbol",
+      enabled = attached and rename_ready == true,
+      reason = (not attached and no_jdtls) or rename_reason or "posicione o cursor sobre um símbolo renomeável",
+    },
+    {
+      key = "move_class",
+      label = "Move Class",
+      enabled = attached,
+      reason = no_jdtls,
+    },
+    {
+      key = "change_signature",
+      label = "Change Method Signature",
+      enabled = attached,
+      reason = no_jdtls,
+    },
+    {
+      key = "rename_package",
+      label = "Rename Package",
+      enabled = false,
+      reason = 'o jdtls 1.63 não suporta: prepareRename responde "Renaming this element is not supported" e o rename devolve só a criação/remoção de um .temp',
+    },
+    {
+      key = "move_package",
+      label = "Move Package",
+      enabled = false,
+      reason = "o jdtls não expõe moveKind para packages (só moveResource para arquivos, moveInstanceMethod, moveStaticMember e moveTypeToNewFile)",
+    },
   }
+end
+
+---Confirma que o jdtls importou todos os módulos do agregador antes de uma
+---refatoração que pode cruzar módulos. Devolve nil quando está tudo coberto.
+local function coverage_problem(bufnr, cb)
+  local root = project.root(bufnr)
+  if not root then
+    return cb(nil)
+  end
+
+  local modules = project.modules(root)
+  if #modules <= 1 then
+    return cb(nil) -- projeto single-module: cobertura é o próprio root
+  end
+
+  local client = require("jc.lsp").get_jdtls_client()
+  if not client then
+    return cb("jdtls não está anexado a este buffer")
+  end
+
+  client:request(
+    "workspace/executeCommand",
+    { command = "java.project.listSourcePaths", arguments = {} },
+    function(err, res)
+      vim.schedule(function()
+        if err or type(res) ~= "table" or type(res.data) ~= "table" then
+          return cb("não consegui confirmar quais módulos o jdtls importou")
+        end
+
+        local paths = {}
+        for _, entry in ipairs(res.data) do
+          if type(entry.path) == "string" then
+            paths[#paths + 1] = entry.path
+          end
+        end
+
+        local missing = {}
+        for _, mod in ipairs(modules) do
+          local found = false
+          for _, path in ipairs(paths) do
+            if path == mod or path:sub(1, #mod + 1) == mod .. "/" then
+              found = true
+              break
+            end
+          end
+          if not found then
+            missing[#missing + 1] = vim.fs.basename(mod)
+          end
+        end
+
+        if #missing > 0 then
+          return cb(
+            "módulos não importados pelo jdtls: "
+              .. table.concat(missing, ", ")
+              .. " — abra um arquivo deles (ou reinicie o Neovim) antes de refatorar"
+          )
+        end
+        cb(nil)
+      end)
+    end,
+    bufnr
+  )
+end
+
+---Prévia real de um WorkspaceEdit (rename/move/change signature) antes de
+---qualquer alteração.
+function M.preview_edit(edit, bufnr)
+  local root = project.root(bufnr)
+  if not root then
+    ui.notify("fora de um projeto Java (pom/gradle): refatoração bloqueada", vim.log.levels.WARN)
+    return
+  end
+
+  coverage_problem(bufnr, function(problem)
+    if problem then
+      ui.notify("refatoração bloqueada: " .. problem, vim.log.levels.ERROR)
+      return
+    end
+
+    local plan, err = preview.plan(edit, { encoding = encoding(), root = root })
+    if not plan then
+      ui.notify("prévia bloqueada: " .. err, vim.log.levels.ERROR)
+      return
+    end
+
+    preview.review(plan, function() end)
+  end)
 end
 
 ---Entrada do `<leader>jr` (normal ou visual).
@@ -182,12 +471,36 @@ function M.refactor()
     leave_visual()
   end
 
-  ui.menu(entries(ctx, bufnr), "Java: Refactor", function(entry)
-    local runner = RUNNERS[entry.key]
-    if runner then
-      runner(ctx)
-    end
-  end)
+  M._bufnr = bufnr
+
+  -- valida rename na posição atual (assíncrono) antes de montar o menu
+  local function open(rename_ready, rename_reason)
+    ui.menu(entries(ctx, bufnr, rename_ready, rename_reason), "Java: Refactor", function(entry)
+      local runner = RUNNERS[entry.key]
+      if runner then
+        runner(ctx)
+      end
+    end)
+  end
+
+  if not ui.jdtls_attached(bufnr) then
+    open(false, "jdtls não está anexado a este buffer")
+    return
+  end
+
+  local client = require("jc.lsp").get_jdtls_client()
+  local params = vim.lsp.util.make_position_params(0, client.offset_encoding)
+  client:request("textDocument/prepareRename", params, function(err, result)
+    vim.schedule(function()
+      if err then
+        open(false, "rename indisponível: " .. (err.message or vim.inspect(err)))
+      elseif type(result) ~= "table" then
+        open(false, "jdtls não reconhece um símbolo renomeável na posição do cursor")
+      else
+        open(true, nil)
+      end
+    end)
+  end, bufnr)
 end
 
 -- expostos para testes
