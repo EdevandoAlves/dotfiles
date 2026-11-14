@@ -484,6 +484,8 @@ function M.create(kind, source_root, pkg, name, opts)
     -- atualiza o build path do jdtls no primeiro write
     vim.cmd.edit(vim.fn.fnameescape(file))
     vim.api.nvim_buf_set_lines(0, 0, -1, false, vim.split(body:gsub("\n+$", ""), "\n", { plain = true }))
+    -- os templates do jc contam com o mesmo pós-passo do gerador dele
+    vim.cmd("silent! normal! gg=G")
     vim.cmd.write()
     notify("criado " .. rel)
     return file

@@ -72,6 +72,20 @@ local function rename_symbol(bufnr)
   end)
 end
 
+---Rótulo de destino do Move Class. Inclui o source root porque o mesmo package
+---existe em src/main, src/test e em cada módulo do projeto.
+---@param project_root string|nil
+---@param dest table
+---@return string label, string dir
+local function destination_label(project_root, dest)
+  local dir = vim.uri_to_fname(dest.uri)
+  local name = dest.isDefaultPackage and "(default package)" or (dest.displayName or "")
+  local where = (project_root and vim.fs.relpath(project_root, dir)) or dir
+  return name .. "  [" .. where .. "]", dir
+end
+
+M._destination_label = destination_label
+
 ---Move Class: getMoveDestinations -> destino -> java/move (retorna o edit) -> prévia.
 local function move_class(bufnr)
   if not ui.same_buffer(bufnr) then
@@ -87,6 +101,7 @@ local function move_class(bufnr)
   local uri = vim.uri_from_bufnr(bufnr)
   local file_name = vim.fn.fnamemodify(vim.uri_to_fname(uri), ":t")
   local tick = vim.b[bufnr].changedtick
+  local project_root = project.root(bufnr)
 
   client:request("java/getMoveDestinations", {
     moveKind = "moveResource",
@@ -108,11 +123,13 @@ local function move_class(bufnr)
       local labels, by_label, usable = {}, {}, 0
 
       for _, dest in ipairs(destinations) do
-        local dir = vim.uri_to_fname(dest.uri)
-        local name = dest.isDefaultPackage and "(default package)" or (dest.displayName or "")
-        local text = name
-        if dest.project then
-          text = text .. "  [" .. tostring(dest.project) .. "]"
+        local text, dir = destination_label(project_root, dest)
+        if by_label[text] then
+          local n = 2
+          while by_label[text .. "  #" .. n] do
+            n = n + 1
+          end
+          text = text .. "  #" .. n
         end
 
         local reason

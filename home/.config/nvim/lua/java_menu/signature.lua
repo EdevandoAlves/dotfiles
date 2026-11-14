@@ -284,10 +284,14 @@ local function open_menu(state, bufnr, on_edit)
         reopen()
       end)
     elseif entry.key == "visibility" then
-      ui.pick_one({ "public", "protected", "private", "(default)" }, "Java: Signature — visibilidade", function(choice)
-        state.modifier = choice == "(default)" and "" or choice
-        reopen()
-      end)
+      ui.pick_one(
+        { "public", "protected", "private", "(default)" },
+        "Java: Signature — visibilidade",
+        function(choice)
+          state.modifier = choice == "(default)" and "" or choice
+          reopen()
+        end
+      )
     elseif entry.key == "delegate" then
       state.delegate = not state.delegate
       reopen()
