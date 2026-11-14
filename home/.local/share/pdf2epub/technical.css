@@ -1,0 +1,248 @@
+/* PDF → EPUB technical stylesheet
+   Designed for Readest (Linux + Android) and other EPUB3 readers.
+   Deliberately avoids fixed foreground/background colors so the reader's
+   light/dark theme stays in control. Only neutral, translucent surfaces
+   are used for code and tables. */
+
+html {
+  font-size: 100%;
+}
+
+body {
+  font-family: "Literata", "Source Serif 4", "Georgia", "Times New Roman", serif;
+  line-height: 1.55;
+  margin: 0 4%;
+  padding: 0;
+  text-align: left;
+  hyphens: auto;
+  -webkit-hyphens: auto;
+  overflow-wrap: break-word;
+}
+
+/* ---------- Headings ---------- */
+
+h1, h2, h3, h4, h5, h6 {
+  font-family: "Inter", "Source Sans 3", "Helvetica Neue", Arial, sans-serif;
+  font-weight: 600;
+  line-height: 1.25;
+  text-align: left;
+  hyphens: none;
+  -webkit-hyphens: none;
+  page-break-after: avoid;
+  break-after: avoid;
+  margin: 1.4em 0 0.5em;
+}
+
+h1 {
+  font-size: 1.65em;
+  margin-top: 0.6em;
+  padding-bottom: 0.25em;
+  border-bottom: 1px solid rgba(128, 128, 128, 0.35);
+  page-break-before: always;
+  break-before: page;
+}
+
+/* Pandoc's generated title page and the first heading should not add a blank page. */
+section.titlepage + section h1 {
+  page-break-before: avoid;
+  break-before: avoid;
+}
+
+h2 { font-size: 1.32em; }
+h3 { font-size: 1.15em; }
+h4 { font-size: 1.02em; }
+h5, h6 { font-size: 0.98em; font-style: italic; }
+
+/* ---------- Body text ---------- */
+
+p {
+  margin: 0 0 0.7em;
+  orphans: 2;
+  widows: 2;
+}
+
+strong { font-weight: 650; }
+
+a {
+  color: inherit;
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 0.15em;
+}
+
+/* Keep long URLs from stretching the page. */
+a[href^="http"] { overflow-wrap: anywhere; }
+
+hr {
+  border: 0;
+  border-top: 1px solid rgba(128, 128, 128, 0.35);
+  margin: 1.6em 0;
+}
+
+blockquote {
+  margin: 1em 0;
+  padding: 0.1em 0 0.1em 1em;
+  border-left: 3px solid rgba(128, 128, 128, 0.45);
+  font-style: italic;
+}
+
+ul, ol {
+  margin: 0 0 0.8em;
+  padding-left: 1.35em;
+}
+
+li { margin: 0.2em 0; }
+
+li > p { margin-bottom: 0.35em; }
+
+/* ---------- Code ---------- */
+
+code, kbd, samp {
+  font-family: "JetBrains Mono", "Fira Code", "DejaVu Sans Mono", "Liberation Mono", monospace;
+  font-size: 0.88em;
+}
+
+/* Inline code: subtle surface that works on light and dark backgrounds. */
+:not(pre) > code {
+  padding: 0.1em 0.32em;
+  border-radius: 3px;
+  background-color: rgba(128, 128, 128, 0.14);
+  overflow-wrap: break-word;
+}
+
+pre {
+  font-family: "JetBrains Mono", "Fira Code", "DejaVu Sans Mono", "Liberation Mono", monospace;
+  font-size: 0.84em;
+  line-height: 1.45;
+  margin: 1em 0;
+  padding: 0.7em 0.85em;
+  border: 1px solid rgba(128, 128, 128, 0.28);
+  border-radius: 4px;
+  background-color: rgba(128, 128, 128, 0.09);
+  /* Preserve indentation and line breaks, but wrap very long lines so
+     nothing is clipped on narrow phone screens. */
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+  word-break: normal;
+  tab-size: 4;
+  -moz-tab-size: 4;
+  page-break-inside: avoid;
+  break-inside: avoid;
+}
+
+pre code {
+  font-size: 1em;
+  background: none;
+  padding: 0;
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+}
+
+/* ---------- Tables ---------- */
+
+table {
+  border-collapse: collapse;
+  border-spacing: 0;
+  width: 100%;
+  margin: 1.1em 0;
+  font-family: "Inter", "Source Sans 3", "Helvetica Neue", Arial, sans-serif;
+  font-size: 0.86em;
+  line-height: 1.4;
+  page-break-inside: avoid;
+  break-inside: avoid;
+}
+
+th, td {
+  border: 1px solid rgba(128, 128, 128, 0.4);
+  padding: 0.3em 0.5em;
+  vertical-align: top;
+  text-align: left;
+  overflow-wrap: break-word;
+}
+
+thead th {
+  background-color: rgba(128, 128, 128, 0.14);
+  font-weight: 600;
+}
+
+caption {
+  caption-side: top;
+  font-size: 0.9em;
+  font-style: italic;
+  padding-bottom: 0.35em;
+}
+
+/* ---------- Images and figures ---------- */
+
+img {
+  max-width: 100%;
+  height: auto;
+  display: block;
+  margin: 1em auto;
+  page-break-inside: avoid;
+  break-inside: avoid;
+}
+
+figure {
+  margin: 1.2em 0;
+  text-align: center;
+  page-break-inside: avoid;
+  break-inside: avoid;
+}
+
+figure img {
+  margin: 0 auto 0.4em;
+  max-height: 85vh;
+  object-fit: contain;
+}
+
+figcaption {
+  font-size: 0.88em;
+  font-style: italic;
+  text-align: center;
+  opacity: 0.85;
+}
+
+/* ---------- Math ---------- */
+
+.math, mjx-container {
+  font-size: 1.02em;
+}
+
+.math.display, mjx-container[display="true"] {
+  display: block;
+  margin: 0.9em 0;
+  overflow-x: auto;
+  text-align: center;
+}
+
+/* ---------- Footnotes ---------- */
+
+.footnotes {
+  font-size: 0.88em;
+  opacity: 0.9;
+}
+
+.footnotes hr {
+  margin: 1.8em 0 0.8em;
+}
+
+a.footnote-ref { text-decoration: none; }
+
+/* ---------- Dark mode refinement ---------- */
+
+@media (prefers-color-scheme: dark) {
+  pre {
+    background-color: rgba(255, 255, 255, 0.06);
+    border-color: rgba(255, 255, 255, 0.16);
+  }
+  :not(pre) > code {
+    background-color: rgba(255, 255, 255, 0.1);
+  }
+  thead th {
+    background-color: rgba(255, 255, 255, 0.09);
+  }
+  th, td {
+    border-color: rgba(255, 255, 255, 0.22);
+  }
+}

@@ -8,7 +8,15 @@
 *.webp
 .dotfiles-backup/
 .cache/
-.local/
+
+# Estado e caches do .local (código próprio em .local/bin e
+# .local/share/pdf2epub é versionado; o resto é estado gerado)
+.local/state/
+.local/share/omarchy/
+.local/share/Trash/
+.local/share/pdf2epub/venv/
+.local/share/pdf2epub/__pycache__/
+.local/share/pdf2epub/vlm-verified
 
 # Secrets and app state
 .ssh/
@@ -32,7 +40,6 @@
 .config/cliamp/
 .config/herdr/
 .config/opencode/
-.local/share/
 
 # OS noise
 .DS_Store

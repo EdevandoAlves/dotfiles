@@ -1,0 +1,619 @@
+#!/usr/bin/env bash
+# pdf2epub — PDF → Marker (Markdown) → Pandoc → EPUB3
+# Local-only technical book converter. See --help.
+set -uo pipefail
+
+PDF2EPUB_HOME="${PDF2EPUB_HOME:-$HOME/.local/share/pdf2epub}"
+VENV_BIN="$PDF2EPUB_HOME/venv/bin"
+MARKER="$VENV_BIN/marker_single"
+# Wrapper que corrige bugs conhecidos do Marker (ver o próprio arquivo).
+MARKER_RUNNER="$PDF2EPUB_HOME/marker-runner.py"
+CSS="$PDF2EPUB_HOME/technical.css"
+STAMP="$PDF2EPUB_HOME/vlm-verified"
+DEFAULT_OUT="$HOME/Downloads/epub-output"
+
+QUALITY="auto"
+OUTDIR=""
+TITLE=""
+AUTHOR=""
+LANG_CODE="pt-BR"
+KEEP_INTERMEDIATE=0
+PAGE_RANGE=""
+WORK_DIR=""
+HIGHRES_DPI=""
+LOWRES_DPI=""
+# Livros grandes não cabem na RAM se o Marker processar tudo de uma vez.
+# Vazio = automático: 50 páginas no modo fast (pico ~2 GB) e um bloco só no
+# modo vllm (o VLM roda no servidor; em blocos ele reiniciaria a cada bloco).
+CHUNK_PAGES="${PDF2EPUB_CHUNK_PAGES:-}"
+# Teto de memória por bloco (cgroup). Evita que o systemd-oomd mate o terminal
+# inteiro quando o Marker exagera. 0 desativa.
+MEM_MAX="${PDF2EPUB_MEM_MAX:-8G}"
+
+die()  { printf 'pdf2epub: erro: %s\n' "$*" >&2; exit 1; }
+warn() { printf 'pdf2epub: aviso: %s\n' "$*" >&2; }
+info() { printf '%s\n' "$*" >&2; }
+
+usage() {
+  cat <<'EOF'
+Uso: pdf2epub [opções] "livro.pdf"
+
+Converte um PDF em EPUB3 com Marker + Pandoc (100% local).
+Livros longos são processados em blocos de páginas e unidos em um único EPUB.
+
+Opções:
+  --quality auto|fast|best  Perfil de conversão (padrão: auto)
+                              auto = best se já validado nesta máquina, senão fast
+                              fast = Marker fast (CPU/ONNX, sem servidor VLM)
+                              best = Marker vllm (VLM local via GPU, máxima fidelidade)
+  --output DIR              Diretório de saída (padrão: ~/Downloads/epub-output)
+  --title "Título"          Sobrescreve o título (padrão: metadados do PDF)
+  --author "Autor"          Sobrescreve o autor (padrão: metadados do PDF)
+  --lang CÓDIGO             Idioma do EPUB (padrão: pt-BR)
+  --chunk-pages N           Páginas por bloco do Marker (padrão: 50 no fast,
+                            um bloco só no best; 0 = tudo de uma vez)
+  --mem-max TAM             Teto de RAM por bloco, ex. 8G (padrão: 8G; 0 = sem teto)
+  --work-dir DIR            Reaproveita um workspace já preservado (pula o
+                            Marker se os blocos já estiverem lá)
+  --highres-dpi N           DPI do render usado para OCR e recorte de figuras
+                            (padrão do Marker: 192). Em scan de 72 dpi, use
+                            ~120: mesma qualidade, muito menos RAM e tempo
+  --lowres-dpi N            DPI do render usado no layout (padrão: 96)
+  --keep-intermediate       Mantém o Markdown e as imagens extraídas
+  --page-range "1-20"       Apenas para testes/diagnóstico (roda um bloco só)
+  -h, --help                Mostra esta ajuda
+
+Saída: DIR/<nome-do-livro>.epub
+Nunca sobrescreve um EPUB existente sem confirmação.
+EOF
+}
+
+[ $# -eq 0 ] && { usage; exit 2; }
+
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --quality)   [ $# -ge 2 ] || die "--quality requer um valor"; QUALITY="$2"; shift 2 ;;
+    --output|-o) [ $# -ge 2 ] || die "--output requer um diretório"; OUTDIR="$2"; shift 2 ;;
+    --title)     [ $# -ge 2 ] || die "--title requer um valor"; TITLE="$2"; shift 2 ;;
+    --author)    [ $# -ge 2 ] || die "--author requer um valor"; AUTHOR="$2"; shift 2 ;;
+    --lang)      [ $# -ge 2 ] || die "--lang requer um valor"; LANG_CODE="$2"; shift 2 ;;
+    --page-range) [ $# -ge 2 ] || die "--page-range requer um valor"; PAGE_RANGE="$2"; shift 2 ;;
+    --chunk-pages) [ $# -ge 2 ] || die "--chunk-pages requer um número"; CHUNK_PAGES="$2"; shift 2 ;;
+    --mem-max)   [ $# -ge 2 ] || die "--mem-max requer um valor (ex. 8G ou 0)"; MEM_MAX="$2"; shift 2 ;;
+    --work-dir)  [ $# -ge 2 ] || die "--work-dir requer um diretório"; WORK_DIR="$2"; shift 2 ;;
+    --highres-dpi) [ $# -ge 2 ] || die "--highres-dpi requer um número"; HIGHRES_DPI="$2"; shift 2 ;;
+    --lowres-dpi)  [ $# -ge 2 ] || die "--lowres-dpi requer um número"; LOWRES_DPI="$2"; shift 2 ;;
+    --keep-intermediate) KEEP_INTERMEDIATE=1; shift ;;
+    -h|--help)   usage; exit 0 ;;
+    --)          shift; break ;;
+    -*)          die "opção desconhecida: $1 (veja --help)" ;;
+    *)           break ;;
+  esac
+done
+
+[ $# -eq 1 ] || die "informe exatamente um arquivo PDF (veja --help)"
+
+case "$QUALITY" in
+  auto|fast|best) ;;
+  *) die "--quality inválido: '$QUALITY' (use auto, fast ou best)" ;;
+esac
+
+case "$CHUNK_PAGES" in
+  ''|*[!0-9]*) [ -z "$CHUNK_PAGES" ] || die "--chunk-pages inválido: '$CHUNK_PAGES' (use um inteiro, ex. 50)" ;;
+esac
+
+# ---------- entrada ----------
+INPUT="$1"
+[ -e "$INPUT" ] || die "arquivo não encontrado: $INPUT"
+INPUT="$(realpath -- "$INPUT")" || die "não foi possível resolver o caminho: $1"
+[ -f "$INPUT" ] || die "não é um arquivo: $INPUT"
+[ -r "$INPUT" ] || die "sem permissão de leitura: $INPUT"
+case "${INPUT,,}" in
+  *.pdf) ;;
+  *) die "o arquivo não tem extensão .pdf" ;;
+esac
+
+# ---------- dependências ----------
+[ -x "$MARKER" ] || die "Marker não encontrado em $MARKER (instalação corrompida?)"
+[ -f "$MARKER_RUNNER" ] || die "wrapper não encontrado em $MARKER_RUNNER (instalação corrompida?)"
+[ -f "$CSS" ]    || die "CSS não encontrado em $CSS"
+[ -f "$PDF2EPUB_HOME/html-fix.lua" ] || die "filtro Lua não encontrado em $PDF2EPUB_HOME/html-fix.lua"
+command -v pandoc >/dev/null || die "pandoc não encontrado no PATH"
+command -v pdfinfo >/dev/null || die "pdfinfo (poppler) não encontrado no PATH"
+
+# ---------- perfis ----------
+gpu_ok() { command -v nvidia-smi >/dev/null 2>&1 && nvidia-smi -L >/dev/null 2>&1; }
+docker_vlm_ok() {
+  command -v docker >/dev/null 2>&1 || return 1
+  docker info >/dev/null 2>&1 || return 1
+  # nvidia runtime registrado (nvidia-container-toolkit instalado + configurado)
+  docker info --format '{{json .Runtimes}}' 2>/dev/null | grep -q '"nvidia"' || return 1
+  docker image inspect vllm/vllm-openai:v0.25.1 >/dev/null 2>&1 || return 1
+  gpu_ok
+}
+
+MODE=""
+case "$QUALITY" in
+  fast) MODE="fast" ;;
+  best)
+    if docker_vlm_ok; then MODE="vllm"; else
+      cat >&2 <<'EOF'
+pdf2epub: erro: --quality best exige inferência VLM local, que não está pronta:
+  - nvidia-smi funcionando
+  - Docker daemon ativo
+  - NVIDIA Container Toolkit configurado (runtime "nvidia")
+  - imagem vllm/vllm-openai:v0.25.1 baixada
+Use --quality fast para converter agora, ou instale o suporte GPU conforme o README.
+EOF
+      exit 3
+    fi ;;
+  auto)
+    if [ -f "$STAMP" ] && docker_vlm_ok; then MODE="vllm"; else MODE="fast"; fi ;;
+esac
+
+if [ "$MODE" = "vllm" ]; then
+  # RTX 2060 Super = Turing (SM 7.5, 8 GB): vLLM só aceita fp16 (não bf16).
+  # 0.45 deixa ~3,4 GB para o modelo+KV e o restante para o desktop e os
+  # workers do Superwhisper, que já ocupam ~4 GB desta GPU.
+  export SURYA_INFERENCE_BACKEND="${SURYA_INFERENCE_BACKEND:-vllm}"
+  export VLLM_GPU_TYPE="${VLLM_GPU_TYPE:-t4}"
+  export VLLM_DTYPE="${VLLM_DTYPE:-float16}"
+  export VLLM_GPU_MEMORY_UTILIZATION="${VLLM_GPU_MEMORY_UTILIZATION:-0.45}"
+fi
+
+# Padrão de blocos depende do motor: no vllm cada bloco reinicia o servidor
+# (~5 min), então só divide se o usuário pedir.
+if [ -z "$CHUNK_PAGES" ]; then
+  if [ "$MODE" = "vllm" ]; then CHUNK_PAGES=0; else CHUNK_PAGES=50; fi
+elif [ "$MODE" = "vllm" ] && [ "$CHUNK_PAGES" -gt 0 ]; then
+  warn "no perfil best cada bloco reinicia o servidor VLM (~5 min); use --chunk-pages 0 para não dividir"
+fi
+
+# ---------- saída ----------
+STEM="$(basename -- "$INPUT")"
+STEM="${STEM%.*}"
+[ -n "$OUTDIR" ] || OUTDIR="$DEFAULT_OUT"
+mkdir -p -- "$OUTDIR" || die "não foi possível criar o diretório de saída: $OUTDIR"
+OUTDIR="$(realpath -- "$OUTDIR")"
+OUTFILE="$OUTDIR/$STEM.epub"
+
+if [ -e "$OUTFILE" ]; then
+  if [ -t 0 ]; then
+    printf 'O arquivo já existe:\n  %s\nSobrescrever? [s/N] ' "$OUTFILE" >&2
+    read -r REPLY
+    case "$REPLY" in
+      s|S|y|Y|sim|SIM) ;;
+      *) echo "Cancelado." >&2; exit 1 ;;
+    esac
+  else
+    die "o arquivo já existe e não há terminal para confirmar: $OUTFILE"
+  fi
+fi
+
+# ---------- metadados ----------
+pdf_meta() {
+  # $1 = campo do pdfinfo (Title/Author)
+  pdfinfo -- "$INPUT" 2>/dev/null | awk -v key="$1" '
+    BEGIN { FS=":" }
+    $1 == key { sub(/^[ \t]+/, "", $2); print $2; exit }'
+}
+
+[ -n "$TITLE" ]  || TITLE="$(pdf_meta Title)"
+[ -n "$AUTHOR" ] || AUTHOR="$(pdf_meta Author)"
+[ -n "$TITLE" ]  || TITLE="$STEM"
+if [ -z "$AUTHOR" ]; then
+  warn "PDF sem autor nos metadados; gerando EPUB sem autor"
+fi
+
+# ---------- workspace ----------
+REUSE=0
+if [ -n "$WORK_DIR" ]; then
+  WORK="$(realpath -- "$WORK_DIR")" || die "workspace inválido: $WORK_DIR"
+  [ -d "$WORK" ] || die "workspace não existe: $WORK_DIR"
+  KEEP_INTERMEDIATE=1
+  # blocos do Marker já presentes: pula a etapa cara
+  if compgen -G "$WORK/chunk-*" >/dev/null; then REUSE=1; fi
+else
+  WORK="$(mktemp -d "${TMPDIR:-/tmp}/pdf2epub.XXXXXXXX")" || die "falha ao criar diretório temporário"
+fi
+LOG="$WORK/marker.log"
+FINISHED=0
+cleanup() {
+  if [ "$FINISHED" -eq 1 ] && [ "$KEEP_INTERMEDIATE" -eq 0 ]; then
+    rm -rf -- "$WORK"
+  fi
+}
+trap cleanup EXIT
+[ "$REUSE" -eq 1 ] || : > "$LOG"
+
+# O Marker não expõe paginação no CLI, mas aceita via --config_json. Com ela o
+# Markdown fica dividido por página, e a etapa de reparo de figuras (1c) sabe a
+# que página pertence cada imagem que o Marker deixou de extrair.
+MARKER_CONFIG="$WORK/marker-config.json"
+CONFIG_JSON='{"paginate_output": true, "page_separator": "-----PDF2EPUB-PAGE-----"'
+[ -n "$HIGHRES_DPI" ] && CONFIG_JSON="$CONFIG_JSON, \"highres_image_dpi\": $HIGHRES_DPI"
+[ -n "$LOWRES_DPI" ]  && CONFIG_JSON="$CONFIG_JSON, \"lowres_image_dpi\": $LOWRES_DPI"
+printf '%s}\n' "$CONFIG_JSON" > "$MARKER_CONFIG"
+
+# Preserva o workspace para diagnóstico e sai.
+fail_keep() {
+  warn "$*"
+  warn "workspace preservado em $WORK"
+  KEEP_INTERMEDIATE=1
+  FINISHED=1
+  exit 4
+}
+
+PAGES="$(pdfinfo -- "$INPUT" 2>/dev/null | awk '/^Pages:/ {print $2}')"
+case "$PAGES" in
+  ''|*[!0-9]*) die "não foi possível ler o número de páginas de $INPUT" ;;
+esac
+[ "$PAGES" -ge 1 ] || die "o PDF não tem páginas"
+
+# Cada bloco roda em seu próprio cgroup com teto de memória: se o Marker
+# estourar, morre o bloco (e ele é refeito menor), não a janela do terminal.
+RUNNER=()
+if [ -n "$MEM_MAX" ] && [ "$MEM_MAX" != "0" ]; then
+  command -v systemd-run >/dev/null 2>&1 || die "systemd-run não encontrado; use --mem-max 0 para converter sem teto de RAM"
+  systemd-run --user --scope -q -p "MemoryMax=$MEM_MAX" -p "MemorySwapMax=2G" -- true >/dev/null 2>&1 \
+    || die "--mem-max inválido ou systemd-run --user indisponível: '$MEM_MAX' (use ex. 8G, 4G ou 0)"
+  RUNNER=(systemd-run --user --scope -q -p "MemoryMax=$MEM_MAX" -p "MemorySwapMax=2G" --)
+fi
+
+info "== pdf2epub =="
+info "arquivo : $INPUT"
+info "páginas : $PAGES"
+info "perfil  : $QUALITY → Marker $MODE"
+info "título  : $TITLE"
+[ -n "$AUTHOR" ] && info "autor   : $AUTHOR"
+info "idioma  : $LANG_CODE"
+info "blocos  : $( [ "$CHUNK_PAGES" -gt 0 ] && echo "${CHUNK_PAGES} páginas por bloco" || echo "livro inteiro de uma vez" ), teto ${MEM_MAX:-sem teto} por bloco"
+info "destino : $OUTFILE"
+[ -n "$PAGE_RANGE" ] && warn "page_range ativo ($PAGE_RANGE): uso apenas em testes"
+
+# ---------- 1. Marker ----------
+START=$(date +%s)
+
+# run_marker <dir-saída> <page_range> <log>
+run_marker() {
+  local dir="$1" range="$2" log="$3"
+  local -a cmd=("$MARKER_RUNNER" "$INPUT" --mode "$MODE" --output_dir "$dir" --output_format markdown --config_json "$MARKER_CONFIG")
+  [ -n "$range" ] && cmd+=(--page_range "$range")
+  "${RUNNER[@]}" "$VENV_BIN/python" "${cmd[@]}" 2>&1 | tee "$log"
+  local status=${PIPESTATUS[0]}
+  cat "$log" >> "$LOG"
+  return "$status"
+}
+
+# run_chunk <início> <fim> <profundidade>  (índices 0-based, inclusivos)
+run_chunk() {
+  local s="$1" e="$2" depth="$3"
+  local dir="$WORK/chunk-$s-$e"
+  local log="$WORK/marker-$s-$e.log"
+  mkdir -p -- "$dir"
+  run_marker "$dir" "$s-$e" "$log"
+  local status=$?
+
+  if [ "$status" -eq 0 ]; then
+    local md
+    md="$(find "$dir" -maxdepth 2 -type f -name '*.md' | head -n 1)"
+    if [ -z "$md" ]; then
+      FAILED_RANGE="$((s+1))–$((e+1))"
+      warn "o bloco $FAILED_RANGE terminou sem gerar Markdown (log: $log)"
+      return 1
+    fi
+    return 0
+  fi
+
+  # 137 = SIGKILL do cgroup (teto de memória). Refaz o bloco pela metade.
+  if { [ "$status" -eq 137 ] || [ "$status" -eq 143 ]; } && [ $((e - s + 1)) -gt 20 ] && [ "$depth" -lt 4 ]; then
+    local mid=$(( (s + e) / 2 ))
+    warn "bloco $((s+1))–$((e+1)) morreu por memória (exit $status); refazendo em blocos menores"
+    rm -rf -- "$dir"
+    run_chunk "$s" "$mid" "$((depth + 1))" || return 1
+    run_chunk "$((mid + 1))" "$e" "$((depth + 1))" || return 1
+    return 0
+  fi
+
+  FAILED_RANGE="$((s+1))–$((e+1))"
+  warn "bloco $FAILED_RANGE falhou (exit $status, log: $log)"
+  return 1
+}
+
+FAILED_RANGE=""
+if [ "$REUSE" -eq 1 ]; then
+  info "→ reutilizando blocos do Marker em $WORK"
+elif [ -n "$PAGE_RANGE" ]; then
+  info "→ Marker extraindo Markdown (bloco único, páginas $PAGE_RANGE)..."
+  run_marker "$WORK/chunk-0-0" "$PAGE_RANGE" "$WORK/marker-diagnostico.log" >/dev/null
+  MSTATUS=$?
+  if [ "$MSTATUS" -ne 0 ]; then
+    if [ "$MODE" = "vllm" ] && grep -qE "GPU memory utilization|failed to become healthy|CUDA out of memory|No available memory" "$LOG" 2>/dev/null; then
+      cat >&2 <<'EOF'
+Dica: o servidor VLM não coube na GPU. Feche aplicativos que usam a RTX
+(navegador com aceleração, Superwhisper, jogos) e tente de novo, ou use
+--quality fast para converter agora.
+EOF
+    fi
+    fail_keep "Marker falhou (exit $MSTATUS)"
+  fi
+else
+  [ "$CHUNK_PAGES" -gt 0 ] || CHUNK_PAGES="$PAGES"
+  BLOCKS=$(( (PAGES + CHUNK_PAGES - 1) / CHUNK_PAGES ))
+  info "→ Marker extraindo Markdown em $BLOCKS bloco(s) de até $CHUNK_PAGES páginas..."
+  k=0
+  for ((s = 0; s < PAGES; s += CHUNK_PAGES)); do
+    e=$(( s + CHUNK_PAGES - 1 ))
+    [ "$e" -ge "$PAGES" ] && e=$(( PAGES - 1 ))
+    k=$(( k + 1 ))
+    info "  [$k/$BLOCKS] páginas $((s+1))–$((e+1))"
+    if ! run_chunk "$s" "$e" 0; then
+      if [ "$MODE" = "vllm" ] && grep -qE "GPU memory utilization|failed to become healthy|CUDA out of memory|No available memory" "$LOG" 2>/dev/null; then
+        cat >&2 <<'EOF'
+Dica: o servidor VLM não coube na GPU. Feche aplicativos que usam a RTX
+(navegador com aceleração, Superwhisper, jogos) e tente de novo, ou use
+--quality fast para converter agora.
+EOF
+      fi
+      fail_keep "a conversão parou no bloco ${FAILED_RANGE:-?}; tente --chunk-pages menor (ex. 25)"
+    fi
+  done
+fi
+
+# ---------- 1b. juntar blocos ----------
+info "→ juntando blocos..."
+if ! MERGE_INFO="$(python3 - "$WORK" "$WORK/merged" <<'PY'
+import json, pathlib, re, shutil, sys
+
+work = pathlib.Path(sys.argv[1])
+merged = pathlib.Path(sys.argv[2])
+merged.mkdir(parents=True, exist_ok=True)
+
+IMG_EXTS = {".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg"}
+PAGE_MARK = re.compile(r"\n*\{\s*(\d+)\s*\}-----PDF2EPUB-PAGE-----\n*")
+# Referência de imagem sem caminho: o Marker descreve a figura, não grava o
+# arquivo e o Pandoc transforma isso em src="../" (epubcheck: RSC-007).
+GHOST = re.compile(r"!\[([^\]]*)\]\(\s*\)")
+
+
+def strip_ghost(line):
+    """Remove referências fantasma e a descrição que o Marker repete depois.
+
+    Várias fantasmas podem dividir a mesma linha (ex.: "![]() texto ![]()"),
+    então cada uma é processada isoladamente, com o texto seguinte até a
+    próxima referência.
+    """
+    out, last, changed = [], 0, False
+    for m in GHOST.finditer(line):
+        trailing = line[m.end():]
+        nxt = trailing.find("![")
+        body = trailing if nxt < 0 else trailing[:nxt]
+        a, b = m.group(1).strip(), body.strip()
+        dup = bool(a) and (a == b or (len(a) > 40 and (b.startswith(a[:60]) or a.startswith(b[:60]))))
+        out.append(line[last:m.start()])
+        out.append("" if dup else body)
+        last = m.end() + len(body)
+        changed = True
+    if not changed:
+        return line
+    out.append(line[last:])
+    return "".join(out)
+
+
+blocks = []
+for d in work.iterdir():
+    m = re.fullmatch(r"chunk-(\d+)-(\d+)", d.name)
+    if d.is_dir() and m:
+        blocks.append((int(m.group(1)), int(m.group(2)), d))
+blocks.sort()
+
+lines, pages = [], []
+images = ghosts = chars = 0
+for start, end, d in blocks:
+    mds = sorted(d.rglob("*.md"))
+    if not mds:
+        continue
+    text = mds[0].read_text(encoding="utf-8")
+    for img in sorted(d.rglob("*")):
+        if img.is_file() and img.suffix.lower() in IMG_EXTS:
+            new_name = f"p{start:04d}-{img.name}"
+            shutil.copy2(img, merged / new_name)
+            text = text.replace(f"'{img.name}'", f"'{new_name}'")
+            text = text.replace(f"({img.name})", f"({new_name})")
+            images += 1
+    chars += len(text)
+
+    segments = []
+    if "-----PDF2EPUB-PAGE-----" in text:
+        pieces = PAGE_MARK.split(text)
+        # [preâmbulo, page_id, texto, page_id, texto, ...]
+        if pieces[0].strip():
+            segments.append((None, pieces[0]))
+        for i in range(1, len(pieces) - 1, 2):
+            segments.append((int(pieces[i]), pieces[i + 1]))
+    else:
+        segments.append((None, text))
+
+    for pid, seg in segments:
+        if lines and lines[-1].strip():
+            lines.append("")  # separa páginas: "---" no fim vira regra, não YAML
+        seg_lines = seg.strip("\n").split("\n")
+        ghost_at = [i for i, l in enumerate(seg_lines) if GHOST.search(l)]
+        ghosts += len(ghost_at)
+        seg_lines = [strip_ghost(l) for l in seg_lines]
+        base = len(lines)
+        lines.extend(seg_lines)
+        if pid is not None:
+            pages.append({
+                "page": pid,
+                "abs": pid,  # page_id do Marker já é o índice absoluto no PDF
+                "start": base,
+                "end": len(lines),
+                "ghosts": [base + i for i in ghost_at],
+            })
+
+while lines and not lines[-1].strip():
+    lines.pop()
+if not pages:
+    print("sem marcadores de página no Markdown", file=sys.stderr)
+else:
+    (merged / "pages.json").write_text(json.dumps(pages), encoding="utf-8")
+
+(merged / "merged.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
+print(f"blocos={len(blocks)} imagens={images} refs-fantasmas={ghosts} "
+      f"páginas={len(pages)} caracteres={chars}")
+PY
+)"; then
+  fail_keep "falha ao juntar os blocos em um único Markdown"
+fi
+info "  $MERGE_INFO"
+
+MD="$WORK/merged/merged.md"
+[ -s "$MD" ] || fail_keep "Markdown final vazio. Log: $LOG"
+if ! grep -q '[[:alnum:]]' "$MD"; then
+  fail_keep "Markdown final sem conteúdo textual útil (extração falhou). Log: $LOG"
+fi
+
+MD_DIR="$(dirname -- "$MD")"
+IMG_COUNT="$(find "$MD_DIR" -maxdepth 1 -type f \( -iname '*.png' -o -iname '*.jpg' -o -iname '*.jpeg' -o -iname '*.webp' -o -iname '*.gif' \) | wc -l)"
+info "  Markdown: $MD"
+info "  imagens extraídas: $IMG_COUNT"
+
+# ---------- 1c. figuras que o Marker deixou de fora ----------
+# Nunca acima de 300 dpi; em scan de baixa resolução, extrair em dpi maior só
+# engorda o EPUB sem ganhar detalhe.
+FIG_DPI="${HIGHRES_DPI:-192}"
+FIG_DPI=$(( FIG_DPI * 3 / 2 ))
+[ "$FIG_DPI" -gt 300 ] && FIG_DPI=300
+[ "$FIG_DPI" -lt 150 ] && FIG_DPI=150
+if [ -f "$MD_DIR/pages.json" ] && [ -f "$PDF2EPUB_HOME/figure-repair.py" ]; then
+  info "→ conferindo figuras contra o PDF (todas devem entrar no EPUB)..."
+  if REPAIRED="$("$VENV_BIN/python" "$PDF2EPUB_HOME/figure-repair.py" \
+        --pdf "$INPUT" --md "$MD" --pages "$MD_DIR/pages.json" \
+        --crops-dir "$WORK" --out-dir "$MD_DIR" \
+        --dpi "${FIG_DPI:-300}" 2> "$WORK/figure-repair.log")"; then
+    [ "${REPAIRED:-0}" -gt 0 ] && info "  figuras recuperadas do PDF: $REPAIRED" \
+      || info "  nenhuma figura faltando"
+    grep -E '^  página' "$WORK/figure-repair.log" >&2 || true
+  else
+    warn "não foi possível conferir as figuras (log: $WORK/figure-repair.log)"
+    sed -n '1,5p' "$WORK/figure-repair.log" >&2 || true
+  fi
+  IMG_COUNT="$(find "$MD_DIR" -maxdepth 1 -type f \( -iname '*.png' -o -iname '*.jpg' -o -iname '*.jpeg' -o -iname '*.webp' -o -iname '*.gif' \) | wc -l)"
+  info "  imagens no EPUB: $IMG_COUNT"
+else
+  warn "sem mapa de páginas; conferência de figuras desativada"
+fi
+
+# ---------- 2. Pandoc ----------
+TMP_EPUB="$WORK/out.epub"
+info "→ Pandoc montando EPUB3..."
+PANDOC_ARGS=(
+  "$MD"
+  --from markdown+raw_html+raw_tex+tex_math_dollars+pipe_tables+backtick_code_blocks+fenced_code_blocks
+  --to epub3
+  --output "$TMP_EPUB"
+  --toc --toc-depth=3
+  --split-level=2
+  --css "$CSS"
+  --lua-filter "$PDF2EPUB_HOME/html-fix.lua"
+  --mathml
+  --resource-path="$MD_DIR:$PDF2EPUB_HOME"
+  --metadata "title=$TITLE"
+  --metadata "lang=$LANG_CODE"
+)
+[ -n "$AUTHOR" ] && PANDOC_ARGS+=(--metadata "author=$AUTHOR")
+
+if ! pandoc "${PANDOC_ARGS[@]}" 2> "$WORK/pandoc.err"; then
+  warn "Pandoc falhou (workspace preservado em $WORK):"
+  cat "$WORK/pandoc.err" >&2
+  exit 5
+fi
+[ -s "$TMP_EPUB" ] || { warn "Pandoc não produziu EPUB"; exit 5; }
+
+# ---------- 3. validação estrutural ----------
+info "→ validando EPUB..."
+VALIDATION="$(python3 - "$TMP_EPUB" <<'PY'
+import sys, zipfile, re
+path = sys.argv[1]
+problems, notes = [], []
+try:
+    with zipfile.ZipFile(path) as z:
+        bad = z.testzip()
+        if bad:
+            problems.append(f"ZIP corrompido em {bad}")
+        names = z.namelist()
+        if not names or names[0] != "mimetype":
+            problems.append("'mimetype' não é a primeira entrada do ZIP")
+        else:
+            if z.read("mimetype") != b"application/epub+zip":
+                problems.append("conteúdo de 'mimetype' incorreto")
+        if "META-INF/container.xml" not in names:
+            problems.append("META-INF/container.xml ausente")
+        opf = [n for n in names if n.endswith(".opf")]
+        if not opf:
+            problems.append("package .opf ausente")
+        else:
+            data = z.read(opf[0]).decode("utf-8", "replace")
+            for tag, err in (("<dc:title", "dc:title ausente"),
+                             ("<dc:language", "dc:language ausente")):
+                if tag not in data:
+                    problems.append(err)
+            if 'properties="nav"' not in data and "nav.xhtml" not in names:
+                problems.append("documento de navegação (nav) ausente")
+            m = re.search(r"<dc:title[^>]*>(.*?)</dc:title>", data, re.S)
+            notes.append("dc:title=" + (m.group(1).strip() if m else "?"))
+        xhtml = [n for n in names if n.endswith((".xhtml", ".html", ".htm"))]
+        total = sum(len(z.read(n)) for n in xhtml)
+        if total < 2000:
+            problems.append(f"conteúdo textual insuficiente ({total} bytes)")
+        notes.append(f"{len(xhtml)} documentos XHTML")
+        media = [n for n in names if n.lower().endswith((".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg"))]
+        notes.append(f"{len(media)} imagens")
+        notes.append(f"{len(z.read('mimetype')) + sum(len(z.read(n)) for n in names)} bytes descomprimidos")
+except zipfile.BadZipFile:
+    problems.append("arquivo não é um ZIP válido")
+
+print("; ".join(notes))
+for p in problems:
+    print("PROBLEM:" + p)
+sys.exit(1 if problems else 0)
+PY
+)"
+VSTATUS=$?
+info "  $VALIDATION"
+if [ "$VSTATUS" -ne 0 ]; then
+  warn "EPUB inválido — nada foi gravado em $OUTFILE (workspace preservado em $WORK)"
+  exit 6
+fi
+
+# Conformidade EPUB3 (epubcheck é opcional; instale com: pacman -S epubcheck)
+if command -v epubcheck >/dev/null 2>&1; then
+  info "→ epubcheck (conformidade EPUB 3)..."
+  if ! epubcheck --quiet "$TMP_EPUB" > "$WORK/epubcheck.out" 2>&1; then
+    warn "epubcheck reprovou o EPUB:"
+    grep -E "^(ERROR|FATAL)" "$WORK/epubcheck.out" | head -10 >&2 || head -10 "$WORK/epubcheck.out" >&2
+    warn "nada foi gravado em $OUTFILE (workspace preservado em $WORK)"
+    exit 6
+  fi
+  info "  epubcheck: sem erros"
+else
+  info "  epubcheck não instalado (apenas validação estrutural)"
+fi
+
+cp -- "$TMP_EPUB" "$OUTFILE" || die "falha ao gravar $OUTFILE"
+# ---------- 4. intermediários ----------
+if [ "$KEEP_INTERMEDIATE" -eq 1 ]; then
+  KEEP_DIR="$OUTDIR/$STEM.intermediate"
+  rm -rf -- "$KEEP_DIR"
+  cp -r -- "$MD_DIR" "$KEEP_DIR"
+  cp -- "$LOG" "$KEEP_DIR/marker.log"
+  info "intermediários: $KEEP_DIR"
+fi
+
+FINISHED=1
+END=$(date +%s)
+info "--"
+info "OK em $((END-START))s"
+info "EPUB : $OUTFILE ($(du -h -- "$OUTFILE" | cut -f1))"
+info "perfil: $QUALITY (Marker $MODE)"

@@ -36,6 +36,7 @@ dosfstools
 dotnet-runtime
 efibootmgr
 ente-auth-bin
+epubcheck
 evince
 exfatprogs
 expac
@@ -147,6 +148,7 @@ openssh
 owe
 pacman-contrib
 pamixer
+pandoc
 pinta
 pipewire
 pipewire-alsa
@@ -154,6 +156,7 @@ pipewire-jack
 pipewire-pulse
 plocate
 plymouth
+poppler
 postgresql-libs
 python-build
 python-gobject
