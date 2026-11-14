@@ -9,6 +9,7 @@
 -- funções públicas do jc, que aceitam a lista de campos já escolhida.
 
 local ui = require("java_menu.ui")
+local lsp = require("java_menu.lsp")
 
 local M = {}
 
@@ -63,9 +64,9 @@ end
 
 local with_indent = ui.with_indent
 
-local function range_params()
-  local client = require("jc.lsp").get_jdtls_client()
-  local encoding = client and client.offset_encoding or "utf-16"
+local function range_params(bufnr, client)
+  client = client or lsp.client(bufnr)
+  local encoding = lsp.encoding(client)
   return vim.lsp.util.make_range_params(0, encoding)
 end
 
@@ -166,10 +167,13 @@ local function load_state(bufnr, cb)
     ctor_fields = {},
     constructors = {},
   }
-  if not jdtls_attached(bufnr) then
+  local client, reason = lsp.client_or_reason(bufnr)
+  if not client then
+    notify(reason or "jdtls não está anexado a este buffer", vim.log.levels.WARN)
     cb(state)
     return
   end
+  state.client = client
 
   local pending = 3
   local function done()
@@ -179,10 +183,7 @@ local function load_state(bufnr, cb)
     end
   end
 
-  local lsp = require("jc.lsp")
-
-  lsp.jdtls_request(
-    bufnr,
+  client:request(
     "textDocument/documentSymbol",
     { textDocument = vim.lsp.util.make_text_document_params(bufnr) },
     function(err, resp)
@@ -201,22 +202,23 @@ local function load_state(bufnr, cb)
         state.error = err
       end
       done()
-    end
+    end,
+    bufnr
   )
 
   in_buffer(bufnr, function()
-    local params = range_params()
+    local params = range_params(bufnr, client)
     params.kind = 2
-    lsp.jdtls_request(bufnr, "java/resolveUnimplementedAccessors", params, function(err, resp)
+    client:request("java/resolveUnimplementedAccessors", params, function(err, resp)
       if resp then
         vim.list_extend(state.accessors, resp)
       else
         state.error = state.error or err
       end
       done()
-    end)
+    end, bufnr)
 
-    lsp.jdtls_request(bufnr, "java/checkConstructorsStatus", range_params(), function(err, resp)
+    client:request("java/checkConstructorsStatus", range_params(bufnr, client), function(err, resp)
       if resp then
         state.ctor_fields = resp.fields or {}
         state.constructors = resp.constructors or {}
@@ -224,7 +226,7 @@ local function load_state(bufnr, cb)
         state.error = state.error or err
       end
       done()
-    end)
+    end, bufnr)
   end)
 end
 
@@ -383,7 +385,7 @@ local TOSTRING_STYLES = {
 local function tostring_op(state)
   local bufnr = state.bufnr
   in_buffer(bufnr, function()
-    require("jc.lsp").jdtls_request(bufnr, "java/checkToStringStatus", range_params(), function(err, resp)
+    client:request("java/checkToStringStatus", range_params(bufnr, state.client), function(err, resp)
       if not resp then
         notify("checkToStringStatus falhou: " .. vim.inspect(err), vim.log.levels.WARN)
         return
@@ -425,7 +427,7 @@ end
 local function equals_hashcode(state)
   local bufnr = state.bufnr
   in_buffer(bufnr, function()
-    require("jc.lsp").jdtls_request(bufnr, "java/checkHashCodeEqualsStatus", range_params(), function(err, resp)
+    client:request("java/checkHashCodeEqualsStatus", range_params(bufnr, state.client), function(err, resp)
       if not resp then
         notify("checkHashCodeEqualsStatus falhou: " .. vim.inspect(err), vim.log.levels.WARN)
         return
@@ -586,6 +588,11 @@ function M.generate()
 
   load_state(bufnr, function(state)
     if not ui.same_buffer(bufnr) then
+      return
+    end
+    local jc_guard = lsp.jc_global_reason("Generate")
+    if jc_guard then
+      notify(jc_guard, vim.log.levels.WARN)
       return
     end
     if not jdtls_attached(bufnr) then

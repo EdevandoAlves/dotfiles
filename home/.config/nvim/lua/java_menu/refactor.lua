@@ -10,12 +10,13 @@ local ui = require("java_menu.ui")
 local preview = require("java_menu.preview")
 local project = require("java_menu.project")
 local signature = require("java_menu.signature")
+local lsp = require("java_menu.lsp")
 
 local M = {}
 
-local function encoding()
-  local client = require("jc.lsp").get_jdtls_client()
-  return client and client.offset_encoding or "utf-16"
+local function encoding(bufnr)
+  local client = lsp.client(bufnr)
+  return lsp.encoding(client)
 end
 
 ---Renomear um símbolo: prepareRename (validação) + novo nome + textDocument/rename.
@@ -47,9 +48,9 @@ local function rename_symbol(bufnr)
       return
     end
 
-    local client = require("jc.lsp").get_jdtls_client()
+    local client, client_reason = lsp.client_or_reason(bufnr)
     if not client then
-      ui.notify("jdtls não está anexado a este buffer", vim.log.levels.ERROR)
+      ui.notify(client_reason or "jdtls não está anexado a este buffer", vim.log.levels.ERROR)
       return
     end
 
@@ -92,9 +93,9 @@ local function move_class(bufnr)
     return
   end
 
-  local client = require("jc.lsp").get_jdtls_client()
+  local client, client_reason = lsp.client_or_reason(bufnr)
   if not client then
-    ui.notify("jdtls não está anexado a este buffer", vim.log.levels.ERROR)
+    ui.notify(client_reason or "jdtls não está anexado a este buffer", vim.log.levels.ERROR)
     return
   end
 
@@ -297,8 +298,18 @@ local function run_extract_cursor(fn_name, bufnr)
     return
   end
 
-  local client = require("jc.lsp").get_jdtls_client()
+  local client, client_reason = lsp.client_or_reason(bufnr)
   if not client then
+    ui.notify(client_reason or "jdtls não está anexado a este buffer", vim.log.levels.ERROR)
+    return
+  end
+
+  local function jc_fallback()
+    local guard = lsp.jc_global_reason("Extract")
+    if guard then
+      ui.notify(guard, vim.log.levels.WARN)
+      return
+    end
     return jc[fn_name](false)
   end
 
@@ -337,7 +348,7 @@ local function run_extract_cursor(fn_name, bufnr)
           vim.lsp.util.apply_workspace_edit(result.edit, encoding)
         end
         if result.command then
-          require("jc.lsp").executeCommand(result.command, function() end)
+          client:request("workspace/executeCommand", result.command, function() end, bufnr)
         end
       end)
     end, bufnr)
@@ -346,7 +357,7 @@ local function run_extract_cursor(fn_name, bufnr)
   client:request("java/inferSelection", params, function(err, selections)
     vim.schedule(function()
       if err or type(selections) ~= "table" or #selections == 0 then
-        return jc[fn_name](false)
+        return jc_fallback()
       end
       if #selections == 1 then
         return execute(selections[1])
@@ -375,6 +386,12 @@ end
 local function run_extract(ctx, fn_name)
   local jc = require("jc.refactor")
   if ctx then
+    -- o fluxo Visual usa jc.refactor, que resolve o cliente globalmente
+    local guard = lsp.jc_global_reason("Extract (Visual)")
+    if guard then
+      ui.notify(guard, vim.log.levels.WARN)
+      return
+    end
     with_selection(ctx, function()
       jc[fn_name](true)
     end)
@@ -397,9 +414,19 @@ local RUNNERS = {
     run_extract(ctx, "extract_method")
   end,
   static_import = function()
+    local guard = lsp.jc_global_reason("Static Import")
+    if guard then
+      ui.notify(guard, vim.log.levels.WARN)
+      return
+    end
     require("jc.jdtls").convert_static_import(true)
   end,
   static_import_enum = function()
+    local guard = lsp.jc_global_reason("Static Import Enum")
+    if guard then
+      ui.notify(guard, vim.log.levels.WARN)
+      return
+    end
     require("jc.jdtls").static_import_enum()
   end,
   flip_args = function()
@@ -513,7 +540,7 @@ local function coverage_problem(bufnr, cb)
     return cb(nil) -- projeto single-module: cobertura é o próprio root
   end
 
-  local client = require("jc.lsp").get_jdtls_client()
+  local client = lsp.client_or_reason(bufnr)
   if not client then
     return cb("jdtls não está anexado a este buffer")
   end
@@ -577,7 +604,7 @@ function M.preview_edit(edit, bufnr)
       return
     end
 
-    local plan, err = preview.plan(edit, { encoding = encoding(), root = root })
+    local plan, err = preview.plan(edit, { encoding = encoding(bufnr), root = root })
     if not plan then
       ui.notify("prévia bloqueada: " .. err, vim.log.levels.ERROR)
       return
@@ -621,7 +648,12 @@ function M.refactor()
     return
   end
 
-  local client = require("jc.lsp").get_jdtls_client()
+  local client, client_reason = lsp.client_or_reason(bufnr)
+  if not client then
+    ui.notify(client_reason or "jdtls não está anexado a este buffer", vim.log.levels.WARN)
+    return
+  end
+
   local params = vim.lsp.util.make_position_params(0, client.offset_encoding)
   client:request("textDocument/prepareRename", params, function(err, result)
     vim.schedule(function()

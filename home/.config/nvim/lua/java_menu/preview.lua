@@ -12,6 +12,58 @@ local M = {}
 
 -- ---------- helpers ----------
 
+---Normaliza com realpath quando possível; para caminho ainda inexistente,
+---resolve o diretório real e mantém o basename (rename destino).
+---@param path string
+---@return string
+local function real_path(path)
+  local real = vim.uv.fs_realpath(path)
+  if real then
+    return vim.fs.normalize(real)
+  end
+  local dir = vim.fs.dirname(path)
+  local real_dir = vim.uv.fs_realpath(dir)
+  if real_dir then
+    return vim.fs.normalize(vim.fs.joinpath(real_dir, vim.fs.basename(path)))
+  end
+  return vim.fs.normalize(path)
+end
+
+---Limite real de diretório: `/tmp/proj` não aceita `/tmp/proj2`.
+---@param root string
+---@param path string
+---@return boolean
+local function inside_project(root, path)
+  if type(root) ~= "string" or type(path) ~= "string" then
+    return false
+  end
+  local real_root = real_path(root)
+  local real_path = real_path(path)
+  if real_root == "" or real_path == "" then
+    return false
+  end
+  if real_root == real_path then
+    return true
+  end
+  local sep = real_root:sub(-1) == "/" and "" or "/"
+  return real_path:sub(1, #real_root + #sep) == real_root .. sep
+end
+
+---Buffer modificado apontando para `path`, mesmo quando o arquivo não existe.
+---@param path string
+---@return integer|nil
+local function modified_buffer_for(path)
+  local target = vim.fs.normalize(path)
+  for _, buf in ipairs(vim.api.nvim_list_bufs()) do
+    if vim.api.nvim_buf_is_valid(buf) and vim.bo[buf].modified then
+      local name = vim.api.nvim_buf_get_name(buf)
+      if name ~= "" and vim.fs.normalize(name) == target then
+        return buf
+      end
+    end
+  end
+end
+
 local function path_of(uri)
   return vim.uri_to_fname(uri)
 end
@@ -358,6 +410,12 @@ local function revalidate(plan)
       if vim.fn.isdirectory(vim.fs.dirname(op.new_path)) == 0 then
         problems[#problems + 1] = "diretório destino não existe: " .. relpath(plan.root, vim.fs.dirname(op.new_path))
       end
+      local stale = modified_buffer_for(op.new_path)
+      if stale then
+        problems[#problems + 1] = "o destino tem buffer modificado não salvo: "
+          .. relpath(plan.root, op.new_path)
+          .. " — feche/salve esse buffer antes de aplicar"
+      end
     elseif op.kind == "create" then
       if vim.fn.filereadable(op.path) == 1 then
         problems[#problems + 1] = "arquivo já existe: " .. relpath(plan.root, op.path)
@@ -378,8 +436,7 @@ local function revalidate(plan)
       paths = { op.path }
     end
     for _, path in ipairs(paths) do
-      local root = plan.root:gsub("/$", "")
-      if not path:find(root, 1, true) then
+      if not inside_project(plan.root, path) then
         problems[#problems + 1] = "fora do projeto: " .. path
       end
     end
@@ -436,6 +493,9 @@ local function apply_op(op, plan, renamed)
       local after = after_for(plan, op.old_path)
       local win = vim.fn.bufwinid(old_buf)
       local was_current = vim.api.nvim_get_current_buf() == old_buf
+      -- o novo buffer precisa herdar os clientes LSP do buffer antigo,
+      -- senão o JDTLS perde o documento após RenameFile/Move
+      local old_clients = vim.lsp.get_clients({ bufnr = old_buf })
 
       local stale = vim.fn.bufnr(op.new_path)
       if stale ~= -1 and stale ~= old_buf and not vim.bo[stale].modified then
@@ -459,6 +519,12 @@ local function apply_op(op, plan, renamed)
         vim.bo[new_buf].modified = true
       end
       vim.bo[new_buf].buflisted = true
+      for _, client in ipairs(old_clients) do
+        local attached = vim.lsp.get_clients({ bufnr = new_buf, id = client.id })
+        if #attached == 0 then
+          pcall(vim.lsp.buf_attach_client, new_buf, client.id)
+        end
+      end
 
       if was_current and win == -1 then
         pcall(vim.api.nvim_set_current_buf, new_buf)
@@ -509,5 +575,7 @@ end
 -- expostos para testes
 M._revalidate = revalidate
 M._show_diff = show_diff
+M._inside_project = inside_project
+M._modified_buffer_for = modified_buffer_for
 
 return M

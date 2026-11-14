@@ -5,6 +5,7 @@
 
 local ui = require("java_menu.ui")
 local project = require("java_menu.project")
+local lsp = require("java_menu.lsp")
 
 local M = {}
 
@@ -410,11 +411,13 @@ local function run_build(tool, root, module, args, label)
   start(label or args[1], cmd, root)
 end
 
----Classpath runtime + JDK do projeto via jdtls.
-local function classpath_for(uri, cb)
-  local client = require("jc.lsp").get_jdtls_client()
+---Classpath runtime + JDK do projeto via jdtls (cliente do buffer de origem).
+---@param uri string
+---@param bufnr number
+local function classpath_for(uri, bufnr, cb)
+  local client = lsp.client_or_reason(bufnr)
   if not client then
-    return cb(nil, "jdtls não está anexado a este buffer")
+    return cb(nil, client or "jdtls não está anexado a este buffer")
   end
 
   client:request("workspace/executeCommand", {
@@ -434,7 +437,7 @@ local function classpath_for(uri, cb)
         project_root = type(result.projectRoot) == "string" and vim.uri_to_fname(result.projectRoot) or nil,
       })
     end)
-  end, 0)
+  end, bufnr)
 
   client:request("workspace/executeCommand", {
     command = "java.project.getSettings",
@@ -447,7 +450,7 @@ local function classpath_for(uri, cb)
         state.java = (is_file(vm .. "/bin/java") and (vm .. "/bin/java")) or vm
       end
     end
-  end, 0)
+  end, bufnr)
 end
 
 local function java_bin()
@@ -569,7 +572,7 @@ local function run_main(root, bufnr, mains)
         return
       end
       local uri = vim.uri_from_fname(entry.path)
-      classpath_for(uri, function(cp, err)
+      classpath_for(uri, bufnr, function(cp, err)
         if not cp then
           ui.notify("Run Main indisponível: " .. tostring(err), vim.log.levels.ERROR)
           return

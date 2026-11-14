@@ -7,6 +7,7 @@
 -- continua bloqueante/nativo porque roda dentro de um comando síncrono do jdtls.
 
 local ui = require("java_menu.ui")
+local lsp = require("java_menu.lsp")
 
 local M = {}
 
@@ -29,6 +30,11 @@ local function replace_import(bufnr)
     or type(jc._set_import) ~= "function"
     or type(jc._remember_regular) ~= "function"
   then
+    local guard = lsp.jc_global_reason("Replace Import (fallback jc)")
+    if guard then
+      ui.notify(guard, vim.log.levels.WARN)
+      return
+    end
     return jc.replace_import()
   end
 
@@ -41,9 +47,9 @@ local function replace_import(bufnr)
     return
   end
 
-  local client = require("jc.lsp").get_jdtls_client()
+  local client, client_reason = lsp.client_or_reason(bufnr)
   if not client then
-    ui.notify("jdtls não está anexado a este buffer", vim.log.levels.ERROR)
+    ui.notify(client_reason or "jdtls não está anexado a este buffer", vim.log.levels.ERROR)
     return
   end
 
@@ -186,6 +192,15 @@ function M.imports()
     -- operações que abrem um segundo picker (style) verificam o buffer lá
     if entry.key ~= "style" and not ui.same_buffer(bufnr) then
       return
+    end
+    -- organize/add/remove/expand/style chamam jc.jdtls, que resolve o cliente
+    -- globalmente; Replace Import é direto no cliente do buffer.
+    if entry.key ~= "replace" then
+      local jc_guard = lsp.jc_global_reason("Imports")
+      if jc_guard then
+        ui.notify(jc_guard, vim.log.levels.WARN)
+        return
+      end
     end
     runner(bufnr)
   end)

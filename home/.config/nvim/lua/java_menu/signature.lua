@@ -5,6 +5,7 @@
 -- O edit devolvido vai para java_menu.preview (nada é aplicado aqui).
 
 local ui = require("java_menu.ui")
+local lsp = require("java_menu.lsp")
 
 local M = {}
 
@@ -75,9 +76,9 @@ end
 
 ---Envia a nova assinatura ao jdtls e devolve o WorkspaceEdit (sem aplicar).
 local function request_edit(state, bufnr, on_edit)
-  local client = require("jc.lsp").get_jdtls_client()
+  local client, client_reason = lsp.client_or_reason(bufnr)
   if not client then
-    ui.notify("jdtls não está anexado a este buffer", vim.log.levels.ERROR)
+    ui.notify(client_reason or "jdtls não está anexado a este buffer", vim.log.levels.ERROR)
     return
   end
   if not ui.same_buffer(bufnr) then
@@ -305,9 +306,9 @@ end
 ---@param bufnr number
 ---@param on_edit fun(edit: table)
 function M.change_signature(bufnr, on_edit)
-  local client = require("jc.lsp").get_jdtls_client()
+  local client, client_reason = lsp.client_or_reason(bufnr)
   if not client then
-    ui.notify("jdtls não está anexado a este buffer", vim.log.levels.ERROR)
+    ui.notify(client_reason or "jdtls não está anexado a este buffer", vim.log.levels.ERROR)
     return
   end
   if not ui.same_buffer(bufnr) then

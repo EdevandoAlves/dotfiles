@@ -5,6 +5,7 @@
 
 local ui = require("java_menu.ui")
 local project = require("java_menu.project")
+local lsp = require("java_menu.lsp")
 
 local M = {}
 
@@ -230,6 +231,16 @@ function M.tests()
   }
 
   ui.menu(entries, "Java: Tests", function(entry)
+    -- runs usam classpath/commands do jc/neotest, que resolvem o cliente
+    -- globalmente; stop/summary/output/goto_test não iniciam request no cliente
+    local run_keys = { nearest = true, file = true, suite = true, pick = true, last = true }
+    if run_keys[entry.key] then
+      local jc_guard = lsp.jc_global_reason("Tests")
+      if jc_guard then
+        ui.notify(jc_guard, vim.log.levels.WARN)
+        return
+      end
+    end
     if entry.key == "nearest" then
       run_nearest()
     elseif entry.key == "file" then

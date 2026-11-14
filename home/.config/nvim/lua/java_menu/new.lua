@@ -8,8 +8,9 @@
 -- os tipos escolhidos entram como FQN, então o arquivo não depende de imports
 -- automáticos. Sem JDTLS, a criação básica continua e os tipos são digitados.
 
-local project = require("java_menu.project")
 local ui = require("java_menu.ui")
+local project = require("java_menu.project")
+local lsp = require("java_menu.lsp")
 
 local M = {}
 
@@ -415,8 +416,8 @@ local function kind_availability(kind, deps)
 end
 
 ---@return boolean
-local function jdtls_attached()
-  return #vim.lsp.get_clients({ name = "jdtls" }) > 0
+local function jdtls_attached(bufnr)
+  return lsp.client(bufnr) ~= nil
 end
 
 ---Renderiza o tipo com o template do jc.nvim.
@@ -533,16 +534,12 @@ local TYPE_KINDS = {
   all = { [5] = true, [10] = true, [11] = true, [23] = true },
 }
 
----workspace/symbol no cliente jdtls atual; devolve FQNs importáveis.
+---workspace/symbol no cliente JDTLS do buffer de origem.
 ---@param query string
 ---@param allowed table<number, boolean>
+---@param client vim.lsp.Client|nil
 ---@return string[]|nil
-local function search_types(query, allowed)
-  local client
-  for _, c in ipairs(vim.lsp.get_clients({ name = "jdtls" })) do
-    client = c
-    break
-  end
+local function search_types(query, allowed, client)
   if not client then
     return nil
   end
@@ -601,7 +598,8 @@ end
 ---@param multi boolean
 ---@param on_done fun(types: string[])
 ---@param on_cancel fun()|nil volta para a etapa anterior
-local function ask_type(slot, allowed, multi, on_done, on_cancel)
+---@param bufnr number|nil buffer de origem para o cliente JDTLS
+local function ask_type(slot, allowed, multi, on_done, on_cancel, bufnr)
   on_cancel = on_cancel or function() end
   local title = "Java: New — " .. slot
 
@@ -619,7 +617,8 @@ local function ask_type(slot, allowed, multi, on_done, on_cancel)
     end)
   end
 
-  if not jdtls_attached() then
+  local client = lsp.client(bufnr)
+  if not client then
     notify("jdtls não está anexado — informe o tipo por FQN", vim.log.levels.WARN)
     return manual()
   end
@@ -632,7 +631,7 @@ local function ask_type(slot, allowed, multi, on_done, on_cancel)
     if query == "" then
       return manual()
     end
-    local found = search_types(query, allowed)
+    local found = search_types(query, allowed, client)
     if not found or #found == 0 then
       notify("nenhum tipo encontrado para '" .. query .. "' — informe o FQN", vim.log.levels.WARN)
       return manual()
@@ -670,7 +669,7 @@ local function ask_extends(state)
     ask_options(state)
   end, function()
     ask_options(state)
-  end)
+  end, state.bufnr)
 end
 
 local function ask_parents(state)
@@ -686,7 +685,7 @@ local function ask_parents(state)
     ask_options(state)
   end, function()
     ask_options(state)
-  end)
+  end, state.bufnr)
 end
 
 local function ask_implements(state)
@@ -702,7 +701,7 @@ local function ask_implements(state)
     ask_options(state)
   end, function()
     ask_options(state)
-  end)
+  end, state.bufnr)
 end
 
 local FIELD_MODIFIERS = {
@@ -1235,7 +1234,8 @@ M._summary = show_summary
 ---@param source_root string
 ---@param suggested_pkg string
 ---@param deps string
-local function start(kind, source_root, suggested_pkg, deps)
+---@param bufnr number buffer de origem (para busca de tipos no JDTLS)
+local function start(kind, source_root, suggested_pkg, deps, bufnr)
   local state = {
     kind = kind,
     root = source_root,
@@ -1248,6 +1248,7 @@ local function start(kind, source_root, suggested_pkg, deps)
     fields = {},
     values = {},
     done = false,
+    bufnr = bufnr,
   }
   ask_identity(state, function()
     ask_options(state)
@@ -1258,7 +1259,8 @@ end
 ---@param kind JavaKind
 ---@param roots table[]
 ---@param deps string
-local function pick_root(kind, roots, deps)
+---@param bufnr number buffer de origem (para busca de tipos no JDTLS)
+local function pick_root(kind, roots, deps, bufnr)
   local preferred = project.preferred(roots)
   local ordered = { preferred }
   for _, r in ipairs(roots) do
@@ -1287,13 +1289,13 @@ local function pick_root(kind, roots, deps)
           notify("diretório inexistente: " .. path, vim.log.levels.ERROR)
           return
         end
-        start(kind, path, project.package_for(0, path), deps)
+        start(kind, path, project.package_for(0, path), deps, bufnr)
       end)
       return
     end
     for _, r in ipairs(ordered) do
       if r.label == choice then
-        return start(kind, r.path, project.package_for(0, r.path), deps)
+        return start(kind, r.path, project.package_for(0, r.path), deps, bufnr)
       end
     end
   end)
@@ -1301,7 +1303,8 @@ end
 
 ---Entrada do `<leader>jn`.
 function M.new()
-  local root = project.root()
+  local bufnr = vim.api.nvim_get_current_buf()
+  local root = project.root(bufnr)
   if not root then
     notify("nenhum projeto Maven/Gradle (pom.xml, build.gradle) encontrado a partir deste buffer", vim.log.levels.WARN)
     return
@@ -1313,7 +1316,7 @@ function M.new()
     return
   end
 
-  if not jdtls_attached() then
+  if not jdtls_attached(bufnr) then
     notify(
       "jdtls não está anexado — o arquivo será criado, mas autocomplete de tipos, imports automáticos e code actions ficam limitados até abrir o projeto em um buffer Java",
       vim.log.levels.WARN
@@ -1346,7 +1349,7 @@ function M.new()
       notify(entry.reason, vim.log.levels.WARN)
       return
     end
-    pick_root(entry.kind, roots, deps)
+    pick_root(entry.kind, roots, deps, bufnr)
   end)
 end
 
