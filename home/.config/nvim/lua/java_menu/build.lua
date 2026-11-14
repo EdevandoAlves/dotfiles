@@ -494,7 +494,7 @@ local function ask_module(root, bufnr, cb)
     by_label[label] = mod
   end
 
-  ui.pick_one(labels, "Java: módulo", function(choice)
+  ui.pick_one(labels, "Java: Build — módulo", function(choice)
     local mod = by_label[choice]
     if mod then
       cb(mod)
@@ -518,7 +518,7 @@ local function do_choose_goal(root, bufnr, tool)
     return
   end
   local defaults = tool.tool == "maven" and "clean package" or "build"
-  ui.ask(tool.tool .. " args: ", defaults, function(value)
+  ui.ask("Java: Build — " .. tool.tool .. " args: ", defaults, function(value)
     if value == nil then
       return
     end
@@ -558,13 +558,13 @@ local function run_main(root, bufnr, mains)
     by_label[label] = entry
   end
 
-  ui.pick_one(labels, "Java: run main", function(choice)
+  ui.pick_one(labels, "Java: Build — Run Main", function(choice)
     local entry = by_label[choice]
     if not entry then
       return
     end
 
-    ui.ask("Argumentos da aplicação: ", "", function(args)
+    ui.ask("Java: Build — argumentos da aplicação: ", "", function(args)
       if args == nil then
         return
       end
@@ -618,11 +618,11 @@ local function run_spring(root, bufnr, spring)
 
   local function ask_and_run(module)
     local rel = vim.fs.relpath(root, module)
-    ui.ask("Profile Spring (opcional): ", "", function(profile)
+    ui.ask("Java: Build — profile Spring (opcional): ", "", function(profile)
       if profile == nil then
         return
       end
-      ui.ask("Argumentos da aplicação (opcional): ", "", function(args)
+      ui.ask("Java: Build — argumentos da aplicação (opcional): ", "", function(args)
         if args == nil then
           return
         end
@@ -646,7 +646,7 @@ local function run_spring(root, bufnr, spring)
     ask_and_run(spring[1])
     return
   end
-  ui.pick_one(labels, "Java: módulo Spring Boot", function(choice)
+  ui.pick_one(labels, "Java: Build — módulo Spring Boot", function(choice)
     local mod = by_label[choice]
     if mod then
       ask_and_run(mod)
@@ -721,7 +721,7 @@ function M.build()
     },
   }
 
-  ui.menu(entries, ("Java: build (%s)"):format(tool and tool.tool or "?"), function(entry)
+  ui.menu(entries, ("Java: Build — %s"):format(tool and tool.tool or "?"), function(entry)
     if entry.key == "run_main" then
       run_main(root, bufnr, mains)
     elseif entry.key == "run_spring" then

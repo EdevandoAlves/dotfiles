@@ -80,6 +80,13 @@ local function request_edit(state, bufnr, on_edit)
     ui.notify("jdtls não está anexado a este buffer", vim.log.levels.ERROR)
     return
   end
+  if not ui.same_buffer(bufnr) then
+    return
+  end
+  if state.tick and vim.b[bufnr].changedtick ~= state.tick then
+    ui.notify("o buffer mudou durante a edição da assinatura — refaça a operação", vim.log.levels.WARN)
+    return
+  end
 
   local params = {}
   for _, p in ipairs(state.params) do
@@ -127,7 +134,7 @@ local function ask_param(state, on_done)
   for i, p in ipairs(state.params) do
     entries[#entries + 1] = { label = ("%d. %s %s"):format(i, p.type, p.name), key = tostring(i) }
   end
-  ui.menu(entries, "Java: parâmetro", on_done)
+  ui.menu(entries, "Java: Signature — parâmetro", on_done)
 end
 
 local function edit_param(state, index, reopen)
@@ -139,9 +146,9 @@ local function edit_param(state, index, reopen)
     { label = "Mover para baixo", key = "down", enabled = index < #state.params, reason = "já é o último" },
     { label = "Remover", key = "remove" },
   }
-  ui.menu(entries, ("Java: %s %s"):format(p.type, p.name), function(entry)
+  ui.menu(entries, ("Java: Signature — %s %s"):format(p.type, p.name), function(entry)
     if entry.key == "rename" then
-      ui.ask("Novo nome do parâmetro: ", p.name, function(name)
+      ui.ask("Java: Signature — novo nome do parâmetro: ", p.name, function(name)
         if name == nil then
           return reopen()
         end
@@ -160,7 +167,7 @@ local function edit_param(state, index, reopen)
         reopen()
       end)
     elseif entry.key == "type" then
-      ui.ask("Novo tipo: ", p.type, function(typ)
+      ui.ask("Java: Signature — novo tipo: ", p.type, function(typ)
         if typ == nil then
           return reopen()
         end
@@ -205,7 +212,7 @@ local function open_menu(state, bufnr, on_edit)
     { label = "✖ Cancelar", key = "cancel" },
   }
 
-  ui.menu(entries, "Java: " .. signature_text(state), function(entry)
+  ui.menu(entries, "Java: Signature — " .. signature_text(state), function(entry)
     local reopen = function()
       open_menu(state, bufnr, on_edit)
     end
@@ -218,7 +225,7 @@ local function open_menu(state, bufnr, on_edit)
         end
       end)
     elseif entry.key == "add" then
-      ui.ask("Novo parâmetro (tipo nome): ", "", function(value)
+      ui.ask("Java: Signature — novo parâmetro (tipo nome): ", "", function(value)
         if value == nil then
           return reopen()
         end
@@ -233,7 +240,7 @@ local function open_menu(state, bufnr, on_edit)
             return reopen()
           end
         end
-        ui.ask("Valor nas chamadas existentes: ", suggested_default(typ), function(def)
+        ui.ask("Java: Signature — valor nas chamadas existentes: ", suggested_default(typ), function(def)
           if def == nil then
             return reopen()
           end
@@ -251,7 +258,7 @@ local function open_menu(state, bufnr, on_edit)
         end)
       end)
     elseif entry.key == "method_name" then
-      ui.ask("Novo nome do método: ", state.method_name, function(name)
+      ui.ask("Java: Signature — novo nome do método: ", state.method_name, function(name)
         if name == nil then
           return reopen()
         end
@@ -264,7 +271,7 @@ local function open_menu(state, bufnr, on_edit)
         reopen()
       end)
     elseif entry.key == "return_type" then
-      ui.ask("Novo tipo de retorno: ", state.return_type, function(typ)
+      ui.ask("Java: Signature — novo tipo de retorno: ", state.return_type, function(typ)
         if typ == nil then
           return reopen()
         end
@@ -277,7 +284,7 @@ local function open_menu(state, bufnr, on_edit)
         reopen()
       end)
     elseif entry.key == "visibility" then
-      ui.pick_one({ "public", "protected", "private", "(default)" }, "Java: visibilidade", function(choice)
+      ui.pick_one({ "public", "protected", "private", "(default)" }, "Java: Signature — visibilidade", function(choice)
         state.modifier = choice == "(default)" and "" or choice
         reopen()
       end)
@@ -299,7 +306,11 @@ function M.change_signature(bufnr, on_edit)
     ui.notify("jdtls não está anexado a este buffer", vim.log.levels.ERROR)
     return
   end
+  if not ui.same_buffer(bufnr) then
+    return
+  end
 
+  local tick = vim.b[bufnr].changedtick
   local context = vim.lsp.util.make_range_params(0, client.offset_encoding)
   context.context = { diagnostics = {} }
 
@@ -316,10 +327,18 @@ function M.change_signature(bufnr, on_edit)
         )
         return
       end
+      if not ui.same_buffer(bufnr) then
+        return
+      end
+      if vim.b[bufnr].changedtick ~= tick then
+        ui.notify("o buffer mudou desde a abertura do menu — refaça o Change Signature", vim.log.levels.WARN)
+        return
+      end
 
       local state = {
         info = info,
         context = context,
+        tick = tick,
         params = copy_params(info.parameters),
         method_name = info.methodName,
         modifier = info.modifier,

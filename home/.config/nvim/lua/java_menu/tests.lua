@@ -22,13 +22,17 @@ local function jc_test()
   end
 end
 
+---FQN aproximado de um arquivo de teste (src/test/java/<pkg>/X.java).
+local function test_fqn(path)
+  return path:gsub(".*[/\\]src[/\\]test[/\\]java[/\\]", ""):gsub("%.java$", ""):gsub("[/\\]", ".")
+end
+
 ---Arquivos de teste do projeto (src/test/java), com FQN aproximado.
 local function test_files(root)
   local files = vim.fn.glob(root .. "/**/src/test/java/**/*.java", true, true)
   local out = {}
   for _, path in ipairs(files) do
-    local fqn = path:gsub(".*[/\\]src[/\\]test[/\\]java[/\\]", ""):gsub("%.java$", ""):gsub("[/\\]", ".")
-    out[#out + 1] = { label = fqn, path = path }
+    out[#out + 1] = { label = test_fqn(path), path = path }
   end
   table.sort(out, function(a, b)
     return a.label < b.label
@@ -51,6 +55,44 @@ local function run_file(path)
   end)
 end
 
+---Run Nearest; sem teste pareado, oferece os testes do package via Snacks
+---(o fallback interno do jc usava vim.ui.select).
+local function run_nearest()
+  local jc = jc_test()
+  local path = vim.fn.expand("%:p")
+  local ok_cg, cg = pcall(require, "jc.class_generator")
+
+  local counterpart
+  if ok_cg and type(cg.test_counterpart) == "function" then
+    local ok, result = pcall(cg.test_counterpart, path)
+    counterpart = ok and result or nil
+  end
+
+  if counterpart and vim.fn.filereadable(counterpart) == 0 and jc then
+    local production = type(jc._nothing_to_run) == "function" and jc._nothing_to_run(path)
+    local package_tests = type(jc._package_tests) == "function" and jc._package_tests(path) or {}
+    if production and #package_tests > 0 then
+      local labels, by_label = {}, {}
+      for _, file in ipairs(package_tests) do
+        local label = test_fqn(file)
+        labels[#labels + 1] = label
+        by_label[label] = file
+      end
+      ui.pick_one(labels, "Java: Tests — sem teste pareado (rodar do package)", function(choice)
+        local file = by_label[choice]
+        if file then
+          run_file(file)
+        end
+      end)
+      return
+    end
+  end
+
+  if jc and type(jc.run_at_cursor) == "function" then
+    jc.run_at_cursor()
+  end
+end
+
 local function pick_test(root)
   local items = test_files(root)
   if #items == 0 then
@@ -64,7 +106,7 @@ local function pick_test(root)
     by_label[item.label] = item
   end
 
-  ui.pick_one(labels, "Java: rodar teste", function(choice)
+  ui.pick_one(labels, "Java: Tests — rodar teste", function(choice)
     local item = by_label[choice]
     if item then
       run_file(item.path)
@@ -187,9 +229,9 @@ function M.tests()
     },
   }
 
-  ui.menu(entries, "Java: testes", function(entry)
+  ui.menu(entries, "Java: Tests", function(entry)
     if entry.key == "nearest" then
-      jc.run_at_cursor()
+      run_nearest()
     elseif entry.key == "file" then
       jc.run_file()
     elseif entry.key == "suite" then

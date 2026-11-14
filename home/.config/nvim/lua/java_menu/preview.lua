@@ -262,7 +262,7 @@ function M.review(plan, on_done)
     entries[#entries + 1] = { label = "✔ Aplicar alterações", key = "apply", enabled = true }
     entries[#entries + 1] = { label = "✖ Cancelar", key = "cancel", enabled = true }
 
-    ui.menu(entries, "Java: prévia das alterações", function(entry)
+    ui.menu(entries, "Java: Preview — alterações", function(entry)
       if entry.key == "cancel" then
         ui.notify("refatoração cancelada; nada foi alterado", vim.log.levels.INFO)
         on_done(false)

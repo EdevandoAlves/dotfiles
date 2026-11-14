@@ -598,11 +598,15 @@ end
 ---@param allowed table<number, boolean>
 ---@param multi boolean
 ---@param on_done fun(types: string[])
-local function ask_type(slot, allowed, multi, on_done)
+---@param on_cancel fun()|nil volta para a etapa anterior
+local function ask_type(slot, allowed, multi, on_done, on_cancel)
+  on_cancel = on_cancel or function() end
+  local title = "Java: New — " .. slot
+
   local function manual()
-    input({ prompt = slot .. " — FQN (ex.: java.util.ArrayList): " }, function(value)
+    input({ prompt = "Java: New — " .. slot .. ": FQN (ex.: java.util.ArrayList): " }, function(value)
       if value == nil then
-        return
+        return on_cancel()
       end
       value = vim.trim(value)
       if not is_type(value, false) or (not multi and value:find(",", 1, true) ~= nil) then
@@ -618,9 +622,9 @@ local function ask_type(slot, allowed, multi, on_done)
     return manual()
   end
 
-  input({ prompt = slot .. " — buscar tipo no jdtls (vazio = digitar FQN): " }, function(query)
+  input({ prompt = "Java: New — " .. slot .. ": buscar tipo no jdtls (vazio = digitar FQN): " }, function(query)
     if query == nil then
-      return
+      return on_cancel()
     end
     query = vim.trim(query)
     if query == "" then
@@ -632,16 +636,16 @@ local function ask_type(slot, allowed, multi, on_done)
       return manual()
     end
     if multi then
-      ui.pick_many(found, "Java: " .. slot .. " (Space/Tab seleciona, Enter confirma)", function(chosen)
+      ui.pick_many(found, title, function(chosen)
         if chosen == nil then
-          return
+          return on_cancel()
         end
         on_done(chosen)
       end)
     else
-      select(found, { prompt = "Java: " .. slot }, function(choice)
+      select(found, { prompt = title }, function(choice)
         if choice == nil then
-          return
+          return on_cancel()
         end
         on_done({ choice })
       end)
@@ -662,6 +666,8 @@ local function ask_extends(state)
     end
     state.extends = chosen[1]
     ask_options(state)
+  end, function()
+    ask_options(state)
   end)
 end
 
@@ -676,6 +682,8 @@ local function ask_parents(state)
       end
     end
     ask_options(state)
+  end, function()
+    ask_options(state)
   end)
 end
 
@@ -689,6 +697,8 @@ local function ask_implements(state)
         state.implements[#state.implements + 1] = type_name
       end
     end
+    ask_options(state)
+  end, function()
     ask_options(state)
   end)
 end
@@ -714,7 +724,7 @@ local function choose_modifier(on_done, current)
     labels[#labels + 1] = label
     by_label[label] = modifier.value
   end
-  select(labels, { prompt = "Java: modificador do campo" }, function(choice)
+  select(labels, { prompt = "Java: New — modificador do campo" }, function(choice)
     if choice == nil then
       return
     end
@@ -749,18 +759,24 @@ local function ask_fields(state, edit_index)
   local is_component = kind.fields == "components"
   local is_member = kind.fields == "methods" or kind.fields == "elements"
   local target = edit_index and state.fields[edit_index] or nil
-  local field = target or { type = "", name = "", mod = "private" }
+  -- cópia: cancelar no meio da edição não altera o estado já confirmado
+  local field = target and vim.deepcopy(target) or { type = "", name = "", mod = "private" }
 
   local ask_one
   local ask_more
 
-  local more_prompt = is_component and "Java: componentes"
-    or kind.fields == "methods" and "Java: métodos"
-    or kind.fields == "elements" and "Java: elementos"
-    or "Java: campos"
+  local more_prompt = is_component and "Java: New — componentes"
+    or kind.fields == "methods" and "Java: New — métodos"
+    or kind.fields == "elements" and "Java: New — elementos"
+    or "Java: New — campos"
+
+  local function back()
+    ask_options(state)
+  end
 
   local function finish()
     if target then
+      state.fields[edit_index] = field
       return ask_options(state)
     end
     state.fields[#state.fields + 1] = field
@@ -770,7 +786,7 @@ local function ask_fields(state, edit_index)
   ask_more = function()
     select({ "Adicionar outro", "Voltar às opções" }, { prompt = more_prompt }, function(choice)
       if choice == nil then
-        return
+        return back()
       end
       if choice == "Adicionar outro" then
         field = { type = "", name = "", mod = "private" }
@@ -781,12 +797,12 @@ local function ask_fields(state, edit_index)
   end
 
   ask_one = function()
-    local type_prompt = is_component and "Tipo do componente: "
-      or is_member and "Tipo de retorno: "
-      or "Tipo do campo (FQN ou primitivo): "
+    local type_prompt = is_component and "Java: New — tipo do componente: "
+      or is_member and "Java: New — tipo de retorno: "
+      or "Java: New — tipo do campo (FQN ou primitivo): "
     input({ prompt = type_prompt, default = field.type }, function(type_text)
       if type_text == nil then
-        return
+        return back()
       end
       type_text = vim.trim(type_text)
       if not is_type(type_text, kind.fields == "methods") then
@@ -795,13 +811,13 @@ local function ask_fields(state, edit_index)
       end
       field.type = type_text
 
-      local name_prompt = is_component and "Nome do componente: "
-        or kind.fields == "methods" and "Nome do método: "
-        or kind.fields == "elements" and "Nome do elemento: "
-        or "Nome do campo: "
+      local name_prompt = is_component and "Java: New — nome do componente: "
+        or kind.fields == "methods" and "Java: New — nome do método: "
+        or kind.fields == "elements" and "Java: New — nome do elemento: "
+        or "Java: New — nome do campo: "
       input({ prompt = name_prompt, default = field.name }, function(field_name)
         if field_name == nil then
-          return
+          return back()
         end
         field_name = vim.trim(field_name)
         if not is_identifier(field_name) then
@@ -826,7 +842,7 @@ local function ask_fields(state, edit_index)
 
         choose_modifier(function(mod)
           if mod == nil then
-            return
+            return back()
           end
           field.mod = mod
           finish()
@@ -839,9 +855,9 @@ local function ask_fields(state, edit_index)
 end
 
 local function ask_values(state)
-  input({ prompt = "Constante do enum (vazio = terminar): ", default = "" }, function(value)
+  input({ prompt = "Java: New — constante do enum (vazio = terminar): ", default = "" }, function(value)
     if value == nil then
-      return
+      return ask_options(state)
     end
     value = vim.trim(value)
     if value == "" then
@@ -876,29 +892,40 @@ end
 ---@param state table
 ---@param on_done fun()
 local function ask_identity(state, on_done)
-  input({ prompt = "Package (vazio = default): ", default = state.pkg or "" }, function(pkg)
+  local editing = state.name ~= nil
+
+  local function cancel()
+    if editing then
+      return ask_options(state)
+    end
+  end
+
+  local function ask_name(pkg_value)
+    input({ prompt = "Java: New — nome do tipo: ", default = state.name or "" }, function(name)
+      if name == nil then
+        return cancel()
+      end
+      name = vim.trim(name)
+      if not is_identifier(name) then
+        notify("identificador Java inválido: " .. (name == "" and "(vazio)" or name), vim.log.levels.WARN)
+        return ask_name(pkg_value)
+      end
+      state.pkg = pkg_value
+      state.name = name
+      on_done()
+    end)
+  end
+
+  input({ prompt = "Java: New — package (vazio = default): ", default = state.pkg or "" }, function(pkg)
     if pkg == nil then
-      return -- cancelado
+      return cancel()
     end
     pkg = vim.trim(pkg)
     if not is_package(pkg) then
       notify("package Java inválido: " .. pkg, vim.log.levels.WARN)
       return ask_identity(state, on_done)
     end
-    state.pkg = pkg
-
-    input({ prompt = "Nome do tipo: ", default = state.name or "" }, function(name)
-      if name == nil then
-        return -- cancelado
-      end
-      name = vim.trim(name)
-      if not is_identifier(name) then
-        notify("identificador Java inválido: " .. (name == "" and "(vazio)" or name), vim.log.levels.WARN)
-        return ask_identity(state, on_done)
-      end
-      state.name = name
-      on_done()
-    end)
+    ask_name(pkg)
   end)
 end
 
@@ -980,26 +1007,26 @@ ask_options = function(state)
   local noun = field_noun(kind)
   if kind.implements and #state.implements > 0 then
     add("Remover interface…", function()
-      remove_from_list(state.implements, "Java: remover interface", function()
+      remove_from_list(state.implements, "Java: New — remover interface", function()
         ask_options(state)
       end)
     end)
   end
   if kind.extends_slot == "interface" and #state.parents > 0 then
     add("Remover interface pai…", function()
-      remove_from_list(state.parents, "Java: remover interface pai", function()
+      remove_from_list(state.parents, "Java: New — remover interface pai", function()
         ask_options(state)
       end)
     end)
   end
   if kind.fields and #state.fields > 0 then
     add("Editar " .. noun .. "…", function()
-      pick_field(state, "Java: editar " .. noun, function(index)
+      pick_field(state, "Java: New — editar " .. noun, function(index)
         ask_fields(state, index)
       end)
     end)
     add("Remover " .. noun .. "…", function()
-      pick_field(state, "Java: remover " .. noun, function(index)
+      pick_field(state, "Java: New — remover " .. noun, function(index)
         table.remove(state.fields, index)
         ask_options(state)
       end)
@@ -1007,7 +1034,7 @@ ask_options = function(state)
   end
   if kind.values and #state.values > 0 then
     add("Remover constante…", function()
-      remove_from_list(state.values, "Java: remover constante", function()
+      remove_from_list(state.values, "Java: New — remover constante", function()
         ask_options(state)
       end)
     end)
@@ -1018,7 +1045,7 @@ ask_options = function(state)
     end)
   end)
 
-  select(items, { prompt = "Java: opções (opcional)" }, function(choice)
+  select(items, { prompt = "Java: New — opções (Enter revisa · Esc cancela)" }, function(choice)
     if choice == nil then
       return -- cancelado: nada foi criado
     end
@@ -1169,15 +1196,25 @@ end
 ---@param state table
 show_summary = function(state)
   local lines = summary_lines(state)
-  local items = { "Criar", "Voltar às opções", "Cancelar" }
+  local create_label = "✔ Criar"
+  local back_label = "← Voltar às opções"
+  local cancel_label = "✖ Cancelar"
+  local items = { create_label, back_label, cancel_label }
   vim.list_extend(items, lines)
 
-  select(items, { prompt = "Java: resumo — Enter cria, Esc cancela" }, function(choice)
-    if choice == "Voltar às opções" then
+  select(items, { prompt = "Java: New — resumo (Enter cria · Esc cancela)" }, function(choice)
+    if choice == nil then
+      return -- cancelado
+    end
+    if choice == back_label then
       return ask_options(state)
     end
-    if choice ~= "Criar" then
-      return -- cancelado
+    if choice == cancel_label then
+      return
+    end
+    if choice ~= create_label then
+      -- linha informativa do resumo: reabre para não cancelar sem querer
+      return show_summary(state)
     end
     if state.done then
       return
@@ -1234,12 +1271,12 @@ local function pick_root(kind, roots, deps)
   end
   items[#items + 1] = OTHER_ROOT
 
-  select(items, { prompt = "Java: source root" }, function(choice)
+  select(items, { prompt = "Java: New — source root" }, function(choice)
     if choice == nil then
       return -- cancelado
     end
     if choice == OTHER_ROOT then
-      input({ prompt = "Source root: ", default = preferred.path }, function(path)
+      input({ prompt = "Java: New — source root: ", default = preferred.path }, function(path)
         if path == nil then
           return
         end
@@ -1295,7 +1332,7 @@ function M.new()
     by_label[label] = { kind = kind, available = available, reason = reason }
   end
 
-  select(labels, { prompt = "Java: New" }, function(label)
+  select(labels, { prompt = "Java: New — tipo" }, function(label)
     if label == nil then
       return -- cancelado
     end

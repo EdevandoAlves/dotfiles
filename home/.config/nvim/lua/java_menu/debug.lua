@@ -103,7 +103,7 @@ local function debug_main()
     by_label[config.name] = config
   end
 
-  ui.pick_one(labels, "Java: debug main", function(choice)
+  ui.pick_one(labels, "Java: Debug — main class", function(choice)
     local config = by_label[choice]
     if not config then
       return
@@ -140,7 +140,7 @@ local function attach_jvm()
     return
   end
 
-  ui.ask("Host JDWP: ", "127.0.0.1", function(host)
+  ui.ask("Java: Debug — host JDWP: ", "127.0.0.1", function(host)
     if host == nil then
       return
     end
@@ -148,7 +148,7 @@ local function attach_jvm()
     if host == "" then
       host = "127.0.0.1"
     end
-    ui.ask("Porta JDWP: ", "5005", function(port)
+    ui.ask("Java: Debug — porta JDWP: ", "5005", function(port)
       if port == nil then
         return
       end
@@ -173,7 +173,7 @@ local function toggle_breakpoint(condition)
     dap().toggle_breakpoint()
     return
   end
-  ui.ask("Condição do breakpoint: ", "", function(value)
+  ui.ask("Java: Debug — condição do breakpoint: ", "", function(value)
     if value == nil then
       return
     end
@@ -303,7 +303,7 @@ function M.debug()
     },
   }
 
-  ui.menu(entries, "Java: debug", function(entry)
+  ui.menu(entries, "Java: Debug", function(entry)
     if entry.key == "main" then
       debug_main()
     elseif entry.key == "test_nearest" then

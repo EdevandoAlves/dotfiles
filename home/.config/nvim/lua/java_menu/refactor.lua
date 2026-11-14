@@ -26,7 +26,8 @@ local function rename_symbol(bufnr)
   end
 
   local current = vim.fn.expand("<cword>")
-  ui.ask("Novo nome: ", current, function(name)
+  local tick = vim.b[bufnr].changedtick
+  ui.ask("Java: Refactor — novo nome: ", current, function(name)
     if name == nil then
       return
     end
@@ -36,6 +37,13 @@ local function rename_symbol(bufnr)
     end
     if not name:match("^[%a_$][%w_$]*$") then
       ui.notify("nome inválido: " .. name, vim.log.levels.WARN)
+      return
+    end
+    if not ui.same_buffer(bufnr) then
+      return
+    end
+    if vim.b[bufnr].changedtick ~= tick then
+      ui.notify("o buffer mudou desde o rename — refaça a operação", vim.log.levels.WARN)
       return
     end
 
@@ -78,6 +86,7 @@ local function move_class(bufnr)
 
   local uri = vim.uri_from_bufnr(bufnr)
   local file_name = vim.fn.fnamemodify(vim.uri_to_fname(uri), ":t")
+  local tick = vim.b[bufnr].changedtick
 
   client:request("java/getMoveDestinations", {
     moveKind = "moveResource",
@@ -128,13 +137,20 @@ local function move_class(bufnr)
         return
       end
 
-      ui.pick_one(labels, "Java: mover " .. file_name .. " para", function(choice)
+      ui.pick_one(labels, "Java: Refactor — mover " .. file_name .. " para", function(choice)
         local picked = by_label[choice]
         if not picked then
           return
         end
         if picked.reason then
           ui.notify(picked.reason, vim.log.levels.WARN)
+          return
+        end
+        if not ui.same_buffer(bufnr) then
+          return
+        end
+        if vim.b[bufnr].changedtick ~= tick then
+          ui.notify("o buffer mudou desde a abertura do menu — refaça o Move Class", vim.log.levels.WARN)
           return
         end
 
@@ -241,6 +257,103 @@ local function with_selection(ctx, fn)
   ui.with_indent(ctx.bufnr, fn)
 end
 
+---Extract no cursor (sem seleção Visual): o jc usa vim.ui.select quando o
+---jdtls infere mais de uma expressão. Aqui a única diferença é o seletor
+---Snacks; o pedido e a aplicação do edit seguem o protocolo do jc, com
+---checagem de buffer/tick antes de alterar. Qualquer falha de inferência volta
+---para o fluxo do jc (mesmas mensagens).
+local EXTRACT_CURSOR = {
+  extract_variable = "extractVariable",
+  extract_variable_all = "extractVariableAllOccurrence",
+  extract_constant = "extractConstant",
+}
+
+---@param fn_name string
+---@param bufnr number
+local function run_extract_cursor(fn_name, bufnr)
+  local jc = require("jc.refactor")
+  local command = EXTRACT_CURSOR[fn_name]
+  if not command or type(jc[fn_name]) ~= "function" then
+    return
+  end
+  if not ui.same_buffer(bufnr) then
+    return
+  end
+
+  local client = require("jc.lsp").get_jdtls_client()
+  if not client then
+    return jc[fn_name](false)
+  end
+
+  local tick = vim.b[bufnr].changedtick
+  local encoding = client.offset_encoding
+  local context = vim.lsp.util.make_range_params(0, encoding)
+  context.context = { diagnostics = {} }
+  local params = {
+    command = command,
+    context = context,
+    options = {
+      tabSize = vim.lsp.util.get_effective_tabstop(),
+      insertSpaces = vim.bo.expandtab,
+    },
+  }
+
+  local function execute(selection)
+    if not ui.same_buffer(bufnr) then
+      return
+    end
+    if vim.b[bufnr].changedtick ~= tick then
+      ui.notify("o buffer mudou durante a extração — refaça a operação", vim.log.levels.WARN)
+      return
+    end
+    params.commandArguments = { selection }
+    client:request("java/getRefactorEdit", params, function(err, result)
+      vim.schedule(function()
+        if err then
+          ui.notify("extração recusada pelo jdtls: " .. (err.message or vim.inspect(err)), vim.log.levels.ERROR)
+          return
+        end
+        if type(result) ~= "table" then
+          return
+        end
+        if result.edit then
+          vim.lsp.util.apply_workspace_edit(result.edit, encoding)
+        end
+        if result.command then
+          require("jc.lsp").executeCommand(result.command, function() end)
+        end
+      end)
+    end, bufnr)
+  end
+
+  client:request("java/inferSelection", params, function(err, selections)
+    vim.schedule(function()
+      if err or type(selections) ~= "table" or #selections == 0 then
+        return jc[fn_name](false)
+      end
+      if #selections == 1 then
+        return execute(selections[1])
+      end
+
+      local labels, by_label = {}, {}
+      for index, selection in ipairs(selections) do
+        local label = (selection.name or ("seleção " .. index))
+          .. "  ("
+          .. tostring(selection.length or "?")
+          .. " chars)"
+        labels[#labels + 1] = label
+        by_label[label] = selection
+      end
+      ui.pick_one(labels, "Java: Refactor — extrair (escolha a expressão)", function(choice)
+        local selection = by_label[choice]
+        if selection then
+          execute(selection)
+        end
+      end)
+    end)
+  end, bufnr)
+end
+
 ---@param fn_name string extract_variable | extract_variable_all | extract_constant | extract_method
 local function run_extract(ctx, fn_name)
   local jc = require("jc.refactor")
@@ -249,7 +362,7 @@ local function run_extract(ctx, fn_name)
       jc[fn_name](true)
     end)
   else
-    jc[fn_name](false)
+    run_extract_cursor(fn_name, M._bufnr or vim.api.nvim_get_current_buf())
   end
 end
 
@@ -475,6 +588,9 @@ function M.refactor()
 
   -- valida rename na posição atual (assíncrono) antes de montar o menu
   local function open(rename_ready, rename_reason)
+    if not ui.same_buffer(bufnr) then
+      return
+    end
     ui.menu(entries(ctx, bufnr, rename_ready, rename_reason), "Java: Refactor", function(entry)
       local runner = RUNNERS[entry.key]
       if runner then

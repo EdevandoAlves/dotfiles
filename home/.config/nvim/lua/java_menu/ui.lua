@@ -15,11 +15,16 @@ function M.snacks()
   end
 end
 
----Seleção central simples.
+---Seleção central simples. Sem Snacks, mantém a operação funcional pelo
+---vim.ui.select (sem substituir a função global).
 function M.pick_one(items, prompt, on_choice)
   local mod = M.snacks()
   if not mod then
-    M.notify("Snacks não está disponível para a seleção", vim.log.levels.ERROR)
+    vim.ui.select(items, { prompt = prompt }, function(choice)
+      if choice ~= nil then
+        on_choice(choice)
+      end
+    end)
     return
   end
   mod.picker.select(items, { prompt = prompt }, function(choice)
@@ -36,7 +41,9 @@ end
 ---@param items (string|{text:string, value:any})[]
 ---@param prompt string
 ---@param on_confirm fun(selected:any[])
----@param opts { fallback: boolean|nil }|nil fallback = Enter sem seleção usa o item sob o cursor
+---@param opts { fallback: boolean|nil, help: boolean|nil }|nil
+--- fallback = Enter sem seleção usa o item sob o cursor
+--- help = mostra a linha curta de teclas no título (padrão: true)
 function M.pick_many(items, prompt, on_confirm, opts)
   opts = opts or {}
 
@@ -68,9 +75,16 @@ function M.pick_many(items, prompt, on_confirm, opts)
     return
   end
 
+  local title = prompt
+  if opts.help ~= false then
+    title = prompt .. "  ·  Space/Tab · Enter · Esc"
+  end
+
   mod.picker.pick({
-    title = prompt,
+    title = title,
     source = "java_menu_multi",
+    -- mesma moldura dos seletores simples, sem preview de dados internos
+    layout = { preset = "select", preview = false },
     finder = function()
       return vim.deepcopy(entries)
     end,
@@ -79,7 +93,7 @@ function M.pick_many(items, prompt, on_confirm, opts)
     win = {
       input = {
         keys = {
-          ["<Space>"] = { "select_and_next", mode = { "n", "i" } },
+          -- Tab marca sem tirar o foco da busca; Space fica livre para a busca
           ["<Tab>"] = { "select_and_next", mode = { "n", "i" } },
         },
       },

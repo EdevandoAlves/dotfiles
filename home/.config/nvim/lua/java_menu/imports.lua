@@ -2,9 +2,9 @@
 -- <leader>ji: operações de imports sobre as APIs do jc.nvim.
 --
 -- Todas as operações agem apenas no buffer atual. Onde o jc abre um seletor
--- interno (tipos ambíguos, presets de estilo), não substituímos vim.ui.*:
--- só o seletor de preset é reimplementado com Snacks, usando o módulo público
--- jc.import_style para estado e persistência.
+-- interno, não substituímos vim.ui.* globalmente: preset de estilo e
+-- Replace Import usam Snacks; o chooser de imports ambíguos do organize-imports
+-- continua bloqueante/nativo porque roda dentro de um comando síncrono do jdtls.
 
 local ui = require("java_menu.ui")
 
@@ -15,6 +15,67 @@ local NO_WILDCARDS = "no wildcards"
 local function cursor_on_type()
   local word = vim.fn.expand("<cword>")
   return word ~= "" and word:match("^%u[%w_$]*$") ~= nil
+end
+
+---Replace Import com o seletor central, reutilizando a busca/filtro/importação
+---do jc (`_filter_type_symbols`, `_prioritize_types`, `_set_import`,
+---`_remember_regular`). Se a API interna mudar, cai no fluxo nativo do jc.
+---@param bufnr number
+local function replace_import(bufnr)
+  local jc = require("jc.jdtls")
+  if
+    type(jc._filter_type_symbols) ~= "function"
+    or type(jc._prioritize_types) ~= "function"
+    or type(jc._set_import) ~= "function"
+    or type(jc._remember_regular) ~= "function"
+  then
+    return jc.replace_import()
+  end
+
+  local name = vim.fn.expand("<cword>")
+  if name == "" or not name:match("^%u[%w_$]*$") then
+    ui.notify("posicione o cursor sobre um nome de tipo (ex.: List)", vim.log.levels.WARN)
+    return
+  end
+  if not ui.same_buffer(bufnr) then
+    return
+  end
+
+  local client = require("jc.lsp").get_jdtls_client()
+  if not client then
+    ui.notify("jdtls não está anexado a este buffer", vim.log.levels.ERROR)
+    return
+  end
+
+  local tick = vim.b[bufnr].changedtick
+  client:request("workspace/symbol", { query = name }, function(err, result)
+    vim.schedule(function()
+      if err or type(result) ~= "table" then
+        ui.notify("não consegui buscar tipos para " .. name, vim.log.levels.WARN)
+        return
+      end
+      local fqns = jc._filter_type_symbols(result, name, true)
+      if #fqns == 0 then
+        ui.notify("nenhum tipo importável chamado " .. name, vim.log.levels.WARN)
+        return
+      end
+      fqns = jc._prioritize_types(fqns, bufnr)
+      ui.pick_one(fqns, "Java: Imports — importar " .. name .. " de", function(choice)
+        if not choice then
+          return
+        end
+        if not ui.same_buffer(bufnr) then
+          return
+        end
+        if vim.b[bufnr].changedtick ~= tick then
+          ui.notify("o buffer mudou desde a busca — refaça o Replace Import", vim.log.levels.WARN)
+          return
+        end
+        jc._set_import(bufnr, name, choice)
+        jc._remember_regular(name, choice)
+      end)
+    end)
+  end)
 end
 
 ---Seletor central do preset de ordenação (equivalente ao JCimportsStyle).
@@ -35,7 +96,7 @@ local function pick_style(bufnr)
     end
   end
 
-  ui.pick_one(labels, "Java: Import Style", function(choice)
+  ui.pick_one(labels, "Java: Imports — estilo", function(choice)
     local idx = vim.fn.index(labels, choice) + 1
     local name = names[idx]
     if not name then
@@ -74,9 +135,7 @@ local RUNNERS = {
   organize_nosort = function()
     require("jc.jdtls").organize_imports_nosort()
   end,
-  replace = function()
-    require("jc.jdtls").replace_import()
-  end,
+  replace = replace_import,
   style = pick_style,
   expand_star = function()
     require("jc.jdtls").expand_star_imports()

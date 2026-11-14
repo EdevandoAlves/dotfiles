@@ -16,18 +16,19 @@ local notify = ui.notify
 
 -- ---------- infraestrutura ----------
 
-local function snacks()
-  return ui.snacks()
-end
-
 local function jdtls_attached(bufnr)
   return ui.jdtls_attached(bufnr)
 end
 
 ---Executa `fn` com o buffer alvo como corrente (as funções do jc usam o
----buffer 0) e devolve o foco para onde o usuário estava.
-local function in_buffer(bufnr, fn)
+---buffer 0) e devolve o foco para onde o usuário estava. Se `tick` for dado,
+---recusa a operação quando o buffer mudou desde o início do menu.
+local function in_buffer(bufnr, fn, tick)
   if not (bufnr and vim.api.nvim_buf_is_valid(bufnr)) then
+    return
+  end
+  if tick and vim.b[bufnr].changedtick ~= tick then
+    notify("o buffer mudou durante a operação — refaça o Generate", vim.log.levels.WARN)
     return
   end
 
@@ -155,8 +156,16 @@ end
 ---@param bufnr number
 ---@param cb fun(state: table)
 local function load_state(bufnr, cb)
-  local state =
-    { bufnr = bufnr, fields = {}, methods = {}, ctors = {}, accessors = {}, ctor_fields = {}, constructors = {} }
+  local state = {
+    bufnr = bufnr,
+    tick = vim.b[bufnr].changedtick,
+    fields = {},
+    methods = {},
+    ctors = {},
+    accessors = {},
+    ctor_fields = {},
+    constructors = {},
+  }
   if not jdtls_attached(bufnr) then
     cb(state)
     return
@@ -221,67 +230,23 @@ end
 
 -- ---------- seleção (Snacks) ----------
 
----Seleção central com múltipla escolha (Space/Tab alternam).
+---Seleção central com múltipla escolha (Space/Tab alternam; Enter sem seleção
+---usa o item sob o cursor). Delegate para o componente compartilhado.
 ---@param items table[] { text, data, idx }
 ---@param opts { title: string, allow_empty: boolean|nil }
 ---@param on_confirm fun(selected: table[])
 local function pick_multi(items, opts, on_confirm)
-  local mod = snacks()
-  if not mod then
-    notify("Snacks não está disponível para a seleção", vim.log.levels.ERROR)
-    return
-  end
-
   local entries = {}
   for _, item in ipairs(items) do
-    entries[#entries + 1] = { text = item.text, item = item }
+    entries[#entries + 1] = { text = item.text, value = item }
   end
-
-  mod.picker.pick({
-    title = opts.title,
-    source = "java_generate_fields",
-    finder = function()
-      return vim.deepcopy(entries)
-    end,
-    -- "text" devolve chunks de highlight; uma string quebraria o render
-    format = "text",
-    win = {
-      input = {
-        keys = {
-          ["<Space>"] = { "select_and_next", mode = { "n", "i" } },
-          ["<Tab>"] = { "select_and_next", mode = { "n", "i" } },
-        },
-      },
-      list = {
-        keys = {
-          ["<Space>"] = "select_and_next",
-          ["<Tab>"] = "select_and_next",
-        },
-      },
-    },
-    confirm = function(picker)
-      local selected = picker:selected({ fallback = true })
-      picker:close()
-      local out = {}
-      for _, entry in ipairs(selected) do
-        if entry.item then
-          out[#out + 1] = entry.item
-        end
-      end
-      table.sort(out, function(a, b)
-        return a.idx < b.idx
-      end)
-      vim.schedule(function()
-        on_confirm(out)
-      end)
-    end,
-  })
+  ui.pick_many(entries, opts.title, on_confirm, { fallback = true })
 end
 
 local pick_one = ui.pick_one
 
 local function confirm_replace(what, on_yes)
-  pick_one({ "Substituir " .. what, "Cancelar" }, "Java: " .. what .. " já existe", function(choice)
+  pick_one({ "Substituir " .. what, "Cancelar" }, "Java: Generate — " .. what .. " já existe", function(choice)
     if choice == "Substituir " .. what then
       on_yes()
     end
@@ -309,7 +274,7 @@ local function constructor(state, default)
       with_indent(bufnr, function()
         require("jc.jdtls").generate_constructor({}, { default_constructor = true, constructors = state.constructors })
       end)
-    end)
+    end, state.tick)
     return
   end
 
@@ -319,7 +284,7 @@ local function constructor(state, default)
     return
   end
 
-  pick_multi(field_items(fields), { title = "Java: Constructor — selecione os campos" }, function(selected)
+  pick_multi(field_items(fields), { title = "Java: Generate — Constructor (selecione os campos)" }, function(selected)
     if #selected == 0 then
       return
     end
@@ -338,7 +303,7 @@ local function constructor(state, default)
           constructors = state.constructors,
         })
       end)
-    end)
+    end, state.tick)
   end)
 end
 
@@ -385,9 +350,10 @@ local function accessors(state, mode)
     return
   end
 
-  local title = "Java: " .. (mode == "both" and "Getter + Setter" or (mode == "get" and "Getter" or "Setter"))
+  local title = "Java: Generate — "
+    .. (mode == "both" and "Getter + Setter" or (mode == "get" and "Getter" or "Setter"))
 
-  pick_multi(items, { title = title .. " — selecione os campos" }, function(selected)
+  pick_multi(items, { title = title .. " (selecione os campos)" }, function(selected)
     local chosen = {}
     for _, item in ipairs(selected) do
       if item.disabled then
@@ -403,7 +369,7 @@ local function accessors(state, mode)
       with_indent(bufnr, function()
         require("jc.jdtls").generate_accessors(chosen)
       end)
-    end)
+    end, state.tick)
   end)
 end
 
@@ -432,22 +398,26 @@ local function tostring_op(state)
         return
       end
 
-      pick_multi(field_items(fields), { title = "Java: toString() — selecione os campos" }, function(selected)
-        if #selected == 0 then
-          return
-        end
-        local chosen = {}
-        for _, item in ipairs(selected) do
-          chosen[#chosen + 1] = item.data
-        end
-        pick_one(TOSTRING_STYLES, "Java: estilo do toString()", function(style)
-          in_buffer(bufnr, function()
-            with_indent(bufnr, function()
-              require("jc.jdtls").generate_toString(chosen, { code_style = style })
-            end)
+      pick_multi(
+        field_items(fields),
+        { title = "Java: Generate — toString() (selecione os campos)" },
+        function(selected)
+          if #selected == 0 then
+            return
+          end
+          local chosen = {}
+          for _, item in ipairs(selected) do
+            chosen[#chosen + 1] = item.data
+          end
+          pick_one(TOSTRING_STYLES, "Java: Generate — estilo do toString()", function(style)
+            in_buffer(bufnr, function()
+              with_indent(bufnr, function()
+                require("jc.jdtls").generate_toString(chosen, { code_style = style })
+              end)
+            end, state.tick)
           end)
-        end)
-      end)
+        end
+      )
     end)
   end)
 end
@@ -473,7 +443,7 @@ local function equals_hashcode(state)
       local function choose()
         pick_multi(
           field_items(fields),
-          { title = "Java: equals() + hashCode() — selecione os campos" },
+          { title = "Java: Generate — equals() + hashCode() (selecione os campos)" },
           function(selected)
             if #selected == 0 then
               return
@@ -486,7 +456,7 @@ local function equals_hashcode(state)
               with_indent(bufnr, function()
                 require("jc.jdtls").generate_hashCodeAndEquals(chosen)
               end)
-            end)
+            end, state.tick)
           end
         )
       end
@@ -505,7 +475,7 @@ local function abstract_methods(state)
     with_indent(state.bufnr, function()
       require("jc.jdtls").generate_abstractMethods(true)
     end)
-  end)
+  end, state.tick)
 end
 
 -- ---------- menu ----------
@@ -615,6 +585,9 @@ function M.generate()
   end
 
   load_state(bufnr, function(state)
+    if not ui.same_buffer(bufnr) then
+      return
+    end
     if not jdtls_attached(bufnr) then
       notify("jdtls não está anexado a este buffer — geração desabilitada", vim.log.levels.WARN)
     end
